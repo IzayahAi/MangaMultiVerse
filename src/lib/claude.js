@@ -67,16 +67,12 @@ export function fixInnerQuotes(str) {
 }
 
 export async function askClaude(prompt, onChunk, retries=2) {
-  const ANTHROPIC_KEY = typeof import.meta !== "undefined" && import.meta.env?.VITE_ANTHROPIC_KEY;
-
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const tokenLimit = 8000;
 
-      const url = ANTHROPIC_KEY ? "https://api.anthropic.com/v1/messages" : "/api/claude";
-      const headers = ANTHROPIC_KEY
-        ? {"Content-Type":"application/json","x-api-key":ANTHROPIC_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"}
-        : {"Content-Type":"application/json"};
+      const url = "/api/claude";
+      const headers = {"Content-Type":"application/json"};
 
       const res = await fetch(url, {
         method:"POST", headers,
@@ -143,8 +139,8 @@ export async function askClaude(prompt, onChunk, retries=2) {
   return null;
 }
 
-// ── ElevenLabs HD voices (optional — needs VITE_ELEVENLABS_KEY) ──────────────
-export const HAS_ELEVEN = !!(typeof import.meta !== "undefined" && import.meta.env?.VITE_ELEVENLABS_KEY);
+// ── ElevenLabs HD voices — served via the secure /api/eleven proxy ──────────────
+export const HAS_ELEVEN = true;
 
 // Public ElevenLabs voice IDs, split by timbre so we can cast characters sensibly
 const ELEVEN_MALE   = ["pNInz6obpgDQGcFmaJgB","TxGEqnHWrfWFTfGW9XjX","VR6AewLTigWG4xSOukaG","ErXwobaYiN019PkySvjV"]; // Adam, Josh, Arnold, Antoni
@@ -179,15 +175,14 @@ export function pickElevenVoice(v, genderHint = "") {
   return pool[strHash(v.character) % pool.length];
 }
 
-// Generate speech via ElevenLabs. Returns an object URL for an MP3, or null on failure.
+// Generate speech via the secure /api/eleven proxy. Returns an object URL for an MP3, or null on failure.
 export async function generateElevenAudio(text, voiceId) {
-  const KEY = typeof import.meta !== "undefined" && import.meta.env?.VITE_ELEVENLABS_KEY;
-  if (!KEY || !text) return null;
+  if (!text || !voiceId) return null;
   try {
-    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    const res = await fetch("/api/eleven", {
       method: "POST",
-      headers: { "xi-api-key": KEY, "Content-Type": "application/json", "Accept": "audio/mpeg" },
-      body: JSON.stringify({ text, model_id: "eleven_turbo_v2_5", voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.35, use_speaker_boost: true } }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voiceId }),
     });
     if (!res.ok) { console.error("ElevenLabs error:", res.status, (await res.text().catch(()=>'')).slice(0,200)); return null; }
     const blob = await res.blob();
@@ -225,35 +220,31 @@ export async function generatePanelImage(panelDescription, characterContext, sty
 
   const clampDim = (n) => Math.max(64, Math.min(1024, Math.round(n / 64) * 64));
 
-  // ── PRIMARY: Fal.ai (fast, reliable FLUX). Falls through to Together on failure. ──
-  const FAL_KEY = typeof import.meta !== "undefined" && import.meta.env?.VITE_FAL_KEY;
-  if (FAL_KEY) {
-    for (let i = 0; i < 2; i++) {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 30000);
-      try {
-        const res = await fetch('https://fal.run/fal-ai/flux/schnell', {
-          method: 'POST',
-          headers: { 'Authorization': `Key ${FAL_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, image_size: { width: clampDim(dims.w), height: clampDim(dims.h) }, num_inference_steps: 4, num_images: 1, enable_safety_checker: false }),
-          signal: ctrl.signal,
-        });
-        clearTimeout(timer);
-        if (res.ok) {
-          const data = await res.json();
-          const url = data.images?.[0]?.url;
-          if (url) return url;
-        } else {
-          console.warn(`Fal.ai ${res.status}:`, (await res.text().catch(() => '')).slice(0, 150));
-          if (res.status === 401) break; // truly bad key — skip to Together (403 = transient lock, retry)
-        }
-      } catch (e) { clearTimeout(timer); console.warn(`Fal.ai attempt ${i+1} failed:`, e.message); }
-      await new Promise(r => setTimeout(r, 1200));
-    }
-    // fall through to Together below
+  // ── PRIMARY: Fal.ai via the secure /api/fal proxy. Falls through to Together on failure. ──
+  for (let i = 0; i < 2; i++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30000);
+    try {
+      const res = await fetch('/api/fal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, width: clampDim(dims.w), height: clampDim(dims.h) }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) return data.url;
+      } else {
+        console.warn(`Fal.ai ${res.status}:`, (await res.text().catch(() => '')).slice(0, 150));
+        if (res.status === 401 || res.status === 500) break; // key bad/missing — skip to Together
+      }
+    } catch (e) { clearTimeout(timer); console.warn(`Fal.ai attempt ${i+1} failed:`, e.message); }
+    await new Promise(r => setTimeout(r, 1200));
   }
+  // fall through to Together below
 
-  const TOGETHER_KEY = typeof import.meta !== "undefined" && import.meta.env?.VITE_TOGETHER_KEY;
+  // Together (image gen) is reached only through the secure /api/image proxy (it picks the model server-side).
   // Fallback: SDXL (reliably available, takes a negative prompt); FLUX after it.
   const MODELS = [
     { id: 'stabilityai/stable-diffusion-xl-base-1.0', steps: 24, neg: true },
@@ -268,21 +259,7 @@ export async function generatePanelImage(panelDescription, characterContext, sty
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
-      const m = MODELS[Math.min(modelIdx, MODELS.length - 1)];
-      let res;
-      if (TOGETHER_KEY) {
-        const clamp = (n) => Math.max(64, Math.min(1024, Math.round(n / 64) * 64));
-        const body = { model: m.id, prompt, width: clamp(dims.w), height: clamp(dims.h), steps: m.steps };
-        if (m.neg) body.negative_prompt = NEGATIVE;
-        res = await fetch('https://api.together.xyz/v1/images/generations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOGETHER_KEY}` },
-          body: JSON.stringify(body),
-          signal: ctrl.signal,
-        });
-      } else {
-        res = await fetch('/api/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, style }), signal: ctrl.signal });
-      }
+      const res = await fetch('/api/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, style }), signal: ctrl.signal });
       clearTimeout(timer);
       if (res.ok) {
         const data = await res.json();
