@@ -5,7 +5,7 @@ import { useTheme } from "../ThemeContext.jsx";
 
 export default function AuthModal({onAuth, onClose}) {
   const C = useTheme();
-  const [mode,setMode] = useState("login");
+  const [mode,setMode] = useState("signup");
   const [email,setEmail]=useState(""); const [pw,setPw]=useState(""); const [uname,setUname]=useState("");
   const [loading,setLoading]=useState(false); const [err,setErr]=useState("");
 
@@ -29,6 +29,9 @@ export default function AuthModal({onAuth, onClose}) {
         <div style={{display:"flex",gap:0,marginBottom:20,background:C.card,borderRadius:9,padding:3}}>
           {["login","signup"].map(m=><button key={m} onClick={()=>{setMode(m);setErr("");}} style={{flex:1,padding:"7px 0",borderRadius:7,fontSize:12,border:"none",background:mode===m?C.purple:"transparent",color:mode===m?"#fff":C.muted,cursor:"pointer",fontFamily:"inherit",fontWeight:mode===m?500:400}}>{m==="login"?"Sign in":"Create account"}</button>)}
         </div>
+        <div style={{padding:"9px 12px",borderRadius:8,background:C.teal+"14",border:`0.5px solid ${C.teal}44`,marginBottom:14,fontSize:11.5,color:C.text,lineHeight:1.5}}>
+          <span style={{color:C.teal,fontWeight:600}}>Free account.</span> It's only so your manga saves to you and is here when you come back — no payment, nothing to buy.
+        </div>
         {DEMO && <div style={{padding:"8px 12px",borderRadius:7,background:C.gold+"18",border:`0.5px solid ${C.gold}44`,marginBottom:14,fontSize:11,color:C.gold}}>⚡ Demo mode — any email & password works</div>}
         <form onSubmit={submit}>
           {mode==="signup" && <div style={{marginBottom:12}}><div style={{fontSize:11,color:C.muted,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.06em"}}>Username</div><input value={uname} onChange={e=>setUname(e.target.value)} placeholder="your_username" required style={inp}/></div>}
@@ -37,7 +40,7 @@ export default function AuthModal({onAuth, onClose}) {
           {err && <div style={{fontSize:12,color:"#e24b4a",padding:"7px 10px",background:"#e24b4a18",borderRadius:7,marginBottom:12}}>{err}</div>}
           <Btn type="submit" v="pri" disabled={loading} sx={{width:"100%",padding:"10px 0",fontSize:13}}>{loading?<Spinner size={14}/>:mode==="login"?"Sign in →":"Create account →"}</Btn>
         </form>
-        <button onClick={onClose} style={{display:"block",width:"100%",marginTop:12,padding:"7px 0",background:"transparent",border:"none",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Continue as guest</button>
+        <button onClick={onClose} style={{display:"block",width:"100%",marginTop:12,padding:"7px 0",background:"transparent",border:"none",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Just browsing — maybe later</button>
       </div>
     </div>
   );

@@ -1,17 +1,20 @@
 ﻿import { useState, useEffect, useCallback } from "react";
-import { SEED_LIB, GENRES, ORIGINS, rndCover } from "./constants.js";
+import { SEED_LIB, GENRES, ORIGINS, rndCover, LANG_GROUPS } from "./constants.js";
 import { useTheme, useThemeToggle } from "./ThemeContext.jsx";
-import { DEMO, useDB, signIn, refreshToken, spendCredits, fetchPublishedStories } from "./lib/supabase.js";
+import { useI18n } from "./lib/i18n.jsx";
+import { DEMO, useDB, signIn, registerSession, ensureFreshToken, spendCredits, fetchPublishedStories, saveTranslation, saveChapter, deleteChapter, saveBible, logError } from "./lib/supabase.js";
+import { setApiToken } from "./lib/claude.js";
 import { Tag, Btn, Toast, CoverCard } from "./components/UI.jsx";
-import { STATUS_COLOR, STATUS_DOT } from "./constants.js";
+import { STATUS_COLOR, STATUS_DOT, RELEASE_MODE } from "./constants.js";
 import AuthModal from "./components/AuthModal.jsx";
 import Studio from "./components/Studio.jsx";
 import CreatorDashboard from "./components/CreatorDashboard.jsx";
 import MangaReader from "./components/MangaReader.jsx";
-import AgentsPage from "./components/AgentsPage.jsx";
+import AdminDashboard from "./components/AdminDashboard.jsx";
 
 export default function MangaMultiVerse() {
   const C = useTheme();
+  const { t, lang, setLang, translating } = useI18n();
   const [dark, toggleDark] = useThemeToggle();
   const [page,setPage]       = useState(() => localStorage.getItem("mv_page") || "home");
   const [dashTab,setDashTab] = useState("feed");
@@ -109,59 +112,60 @@ export default function MangaMultiVerse() {
     setToast({msg:"Signed out",type:"ok"});
   };
 
+  // Keep the /api/* proxy layer's token in sync with the session, and reflect the server-charged
+  // credit balance (x-mv-balance) or auth/credit errors returned by a proxy.
   useEffect(() => {
-    if (!auth?.token || auth?.token === "demo") return;
-    const stored = localStorage.getItem("mv_auth");
-    if (!stored) return;
-    try {
-      const parsed = JSON.parse(stored);
-      const ageMs = Date.now() - (parsed.savedAt || 0);
-      if (ageMs > 55 * 60 * 1000) {
-        const rTok = parsed.refreshToken;
-        if (rTok && !DEMO) {
-          refreshToken(rTok).then(res => {
-            if (res?.token) {
-              const updated = {...parsed, token: res.token, refreshToken: res.refreshToken || rTok, savedAt: Date.now()};
-              setAuth(prev => ({...prev, token: res.token, refreshToken: res.refreshToken || rTok}));
-              localStorage.setItem("mv_auth", JSON.stringify(updated));
-            } else {
-              setAuth(null);
-              localStorage.removeItem("mv_auth");
-              setToast({msg:"Session expired — please sign in again", type:"warn"});
-            }
-          }).catch(() => {
-            setAuth(null);
-            localStorage.removeItem("mv_auth");
-            setToast({msg:"Session expired — please sign in again", type:"warn"});
-          });
-        } else {
-          setAuth(null);
-          localStorage.removeItem("mv_auth");
-          setToast({msg:"Session expired — please sign in again", type:"warn"});
-        }
+    setApiToken(auth?.token && auth.token !== "demo" ? auth.token : null, (b) => {
+      if (typeof b === "number") setAuth(prev => prev ? { ...prev, user: { ...prev.user, credits: b } } : prev);
+      else if (b === "out_of_credits") setToast({ msg: "You're out of credits.", type: "warn" });
+      else if (b === "demo_limit") setToast({ msg: "You've hit today's demo limit — thanks for trying it! Full access is coming when we launch.", type: "warn" });
+      else if (b === "auth") { setToast({ msg: "Please sign in to continue.", type: "warn" }); setShowAuth(true); }
+    });
+  }, [auth?.token]);
+
+  // Observability: capture uncaught errors + unhandled promise rejections to the error sink so breakage
+  // surfaces to the admin instead of dying in a tester's console. Best-effort (no-ops without the table).
+  useEffect(() => {
+    const uid = auth?.user?.id;
+    const onErr = (e) => logError({ message: e?.message || "uncaught error", source: "window.onerror", stack: e?.error?.stack, url: e?.filename, userId: uid });
+    const onRej = (e) => { const r = e?.reason; logError({ message: "unhandledrejection: " + (r?.message || String(r)), source: "unhandledrejection", stack: r?.stack, userId: uid }); };
+    window.addEventListener("error", onErr);
+    window.addEventListener("unhandledrejection", onRej);
+    return () => { window.removeEventListener("error", onErr); window.removeEventListener("unhandledrejection", onRej); };
+  }, [auth?.user?.id]);
+
+  // Keep the request layer's session in sync so any 401 self-refreshes the JWT and retries.
+  useEffect(() => {
+    registerSession(auth?.refreshToken, (newToken, newRefreshTok) => {
+      setAuth(prev => prev ? { ...prev, token: newToken, refreshToken: newRefreshTok } : prev);
+      try {
+        const stored = JSON.parse(localStorage.getItem("mv_auth") || "null");
+        if (stored) localStorage.setItem("mv_auth", JSON.stringify({ ...stored, token: newToken, refreshToken: newRefreshTok, savedAt: Date.now() }));
+      } catch {}
+    }, () => {
+      // Refresh token is dead — surface it clearly (once). Work stays saved locally; prompt re-login.
+      if (auth?.token && auth?.token !== "demo") {
+        setToast({ msg: "Session expired — sign in again to sync your work to the cloud (it's saved locally for now).", type: "warn" });
+        setShowAuth(true);
       }
+    });
+  }, [auth?.refreshToken]);
+
+  // On load, if the saved token is near expiry, proactively refresh — through the SAME de-duped path
+  // as the reactive 401 retry, so the two can't race and rotate each other's refresh token into a
+  // dead state. ensureFreshToken syncs auth + localStorage via registerSession's onRefresh callback
+  // and fires the expiry notice (toast + sign-in) on genuine failure; it no-ops on transient errors.
+  useEffect(() => {
+    if (!auth?.token || auth?.token === "demo" || DEMO) return;
+    try {
+      const parsed = JSON.parse(localStorage.getItem("mv_auth") || "null");
+      if (parsed && Date.now() - (parsed.savedAt || 0) > 55 * 60 * 1000) ensureFreshToken();
     } catch {}
   }, []);
 
   useEffect(() => {
-    if (!auth?.token || auth?.token === "demo") return;
-    const interval = setInterval(() => {
-      const stored = localStorage.getItem("mv_auth");
-      if (!stored) return;
-      try {
-        const parsed = JSON.parse(stored);
-        const rTok = parsed.refreshToken;
-        if (rTok && !DEMO) {
-          refreshToken(rTok).then(res => {
-            if (res?.token) {
-              const updated = {...parsed, token: res.token, refreshToken: res.refreshToken || rTok, savedAt: Date.now()};
-              setAuth(prev => ({...prev, token: res.token, refreshToken: res.refreshToken || rTok}));
-              localStorage.setItem("mv_auth", JSON.stringify(updated));
-            }
-          }).catch(() => {});
-        }
-      } catch {}
-    }, 45 * 60 * 1000);
+    if (!auth?.token || auth?.token === "demo" || DEMO) return;
+    const interval = setInterval(() => { ensureFreshToken(); }, 45 * 60 * 1000);
     return () => clearInterval(interval);
   }, [auth?.token]);
 
@@ -174,6 +178,11 @@ export default function MangaMultiVerse() {
 
   const onUseCredits = async (amount) => {
     if (!auth?.user) return;
+    // At release, the server proxies charge credits atomically (and report the new balance via
+    // x-mv-balance → setApiToken's onBalance), so the client must NOT also decrement — that would
+    // double-charge. In demo (gate off) the server skips charging, so the client is the sole charger,
+    // preserving current behavior + the moving credit counter.
+    if (RELEASE_MODE) return auth.user.credits ?? 0;
     const current = auth.user.credits ?? 0;
     const next = await spendCredits(auth.user.id, auth.token, current, amount);
     setAuth(prev => prev ? {...prev, user:{...prev.user, credits: next}} : prev);
@@ -181,11 +190,11 @@ export default function MangaMultiVerse() {
   };
 
   const NAV = [
-    {id:"home",label:"Discover"},
-    {id:"library",label:"Library"},
-    {id:"studio",label:"✦ AI Studio"},
-    {id:"creator",label:"Creator"},
-    ...(auth?.user?.role === "admin" ? [{id:"agents",label:"⚙ Agents"}] : []),
+    {id:"home",label:t("nav.home")},
+    {id:"library",label:t("nav.library")},
+    {id:"studio",label:t("nav.studio")},
+    {id:"creator",label:t("nav.creator")},
+    ...(auth?.user ? [{id:"dashboard",label:"⬡ Dashboard"}] : []),
   ];
 
   const go = id => { setPage(id); setSel(null); setReading(null); try { localStorage.setItem("mv_page", id); } catch {} };
@@ -209,14 +218,22 @@ export default function MangaMultiVerse() {
             {NAV.map(n=><button key={n.id} onClick={()=>go(n.id)} style={{padding:"14px 15px",fontSize:13,border:"none",borderBottom:`2px solid ${page===n.id?C.purple:"transparent"}`,background:"transparent",color:page===n.id?C.purple:n.id==="studio"?C.pink:C.muted,cursor:"pointer",fontFamily:"inherit",fontWeight:page===n.id?500:400,transition:"all .12s"}}>{n.label}</button>)}
           </div>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <button onClick={toggleDark} title={dark?"Switch to light":"Switch to dark"} style={{width:32,height:32,borderRadius:8,border:`0.5px solid ${C.border2}`,background:C.card,color:C.muted,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",transition:"all .15s"}}>{dark?"☀":"🌙"}</button>
+            {RELEASE_MODE && <div style={{position:"relative",display:"flex",alignItems:"center"}} title={t("lang.label")}>
+              <span style={{position:"absolute",left:8,pointerEvents:"none",fontSize:12}}>🌐</span>
+              <select value={lang} onChange={e=>setLang(e.target.value)} aria-label={t("lang.label")}
+                style={{appearance:"none",padding:"6px 10px 6px 26px",borderRadius:8,border:`0.5px solid ${C.border2}`,background:C.card,color:C.muted,fontSize:12,fontFamily:"inherit",cursor:"pointer",maxWidth:130,outline:"none"}}>
+                {LANG_GROUPS.map(g=>(<optgroup key={g.region} label={g.region}>{g.langs.map(l=><option key={l} value={l}>{l}</option>)}</optgroup>))}
+              </select>
+              {translating && <span style={{position:"absolute",right:-14,fontSize:10,color:C.purpleL}}>⟳</span>}
+            </div>}
+            <button onClick={toggleDark} title={dark?t("theme.toLight"):t("theme.toDark")} style={{width:32,height:32,borderRadius:8,border:`0.5px solid ${C.border2}`,background:C.card,color:C.muted,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",transition:"all .15s"}}>{dark?"☀":"🌙"}</button>
             {auth?(
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <div style={{width:28,height:28,borderRadius:"50%",background:C.purple,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:500,color:"#fff"}}>{String(auth.user.username||auth.user.email)[0].toUpperCase()}</div>
                 <span style={{fontSize:12,color:C.muted}}>{auth.user.username}</span>
-                <Btn onClick={onSignOut} sx={{fontSize:11,padding:"4px 10px"}}>Sign out</Btn>
+                <Btn onClick={onSignOut} sx={{fontSize:11,padding:"4px 10px"}}>{t("auth.signOut")}</Btn>
               </div>
-            ):<Btn v="soft" onClick={()=>setShowAuth(true)} sx={{fontSize:12}}>Sign in</Btn>}
+            ):<Btn v="soft" onClick={()=>setShowAuth(true)} sx={{fontSize:12}}>{t("auth.signIn")}</Btn>}
           </div>
         </div>
       </div>
@@ -241,10 +258,10 @@ export default function MangaMultiVerse() {
                       <div style={{padding:"24px",background:`linear-gradient(135deg,${C.purple}18,${C.pink}0a)`,borderRadius:12,border:`0.5px solid ${C.purple}44`,marginBottom:16,textAlign:"center"}}>
                         <div style={{fontSize:28,marginBottom:8}}>✦</div>
                         <div style={{fontSize:16,fontWeight:700,fontFamily:"'Cinzel',serif",marginBottom:6}}>Welcome to MangaMultiVerse</div>
-                        <div style={{fontSize:12,color:C.muted,marginBottom:16,lineHeight:1.7}}>Track your reading, discover new series, and create manga with AI. Sign in to get your personal dashboard.</div>
+                        <div style={{fontSize:12,color:C.muted,marginBottom:16,lineHeight:1.7}}>{t("home.welcomeSub")}</div>
                         <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-                          <Btn v="pri" onClick={()=>setShowAuth(true)} sx={{padding:"9px 24px"}}>Sign in</Btn>
-                          <Btn v="soft" onClick={()=>go("library")} sx={{padding:"9px 24px"}}>Browse library</Btn>
+                          <Btn v="pri" onClick={()=>setShowAuth(true)} sx={{padding:"9px 24px"}}>{t("auth.signIn")}</Btn>
+                          <Btn v="soft" onClick={()=>go("library")} sx={{padding:"9px 24px"}}>{t("auth.browseLibrary")}</Btn>
                         </div>
                       </div>
                     )}
@@ -271,20 +288,22 @@ export default function MangaMultiVerse() {
                         )}
                       </div>
                     )}
-                    <div style={{marginBottom:20}}>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-                        <div style={{fontSize:13,fontWeight:600,color:C.text}}>🔥 Trending</div>
-                        <button onClick={()=>go("library")} style={{fontSize:11,color:C.purple,background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit"}}>View all →</button>
+                    {published.length>3&&(
+                      <div style={{marginBottom:20}}>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                          <div style={{fontSize:13,fontWeight:600,color:C.text}}>{t("home.trending")}</div>
+                          <button onClick={()=>go("library")} style={{fontSize:11,color:C.purple,background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit"}}>View all →</button>
+                        </div>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                          {[...published].sort((a,b)=>(b.rating||0)-(a.rating||0)).slice(0,3).map(item=><CoverCard key={item.id} item={item} aiMade onClick={()=>{setSel(item);setPage("library");}}/>)}
+                        </div>
                       </div>
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-                        {SEED_LIB.slice(0,3).map(item=><CoverCard key={item.id} item={item} onClick={()=>{setSel(item);setPage("library");}}/>)}
-                      </div>
-                    </div>
+                    )}
                     {published.length>0&&(
                       <div style={{marginBottom:20}}>
                         <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:12}}>✦ New from creators</div>
                         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-                          {published.slice(0,3).map(item=><CoverCard key={item.id} item={item} aiMade onClick={()=>{setSel(item);setPage("library");}}/>)}
+                          {[...published].sort((a,b)=>new Date(b.published_at||b.updated_at||b.created_at||0)-new Date(a.published_at||a.updated_at||a.created_at||0)).slice(0,6).map(item=><CoverCard key={item.id} item={item} aiMade onClick={()=>{setSel(item);setPage("library");}}/>)}
                         </div>
                       </div>
                     )}
@@ -442,23 +461,25 @@ export default function MangaMultiVerse() {
                     <Btn v="pri" onClick={()=>setShowAuth(true)} sx={{width:"100%",justifyContent:"center"}}>Sign in / Register</Btn>
                   </div>
                 )}
+                {published.length>0&&(
                 <div style={{background:C.card,borderRadius:12,padding:"14px",border:`0.5px solid ${C.border}`}}>
                   <div style={{fontSize:11,fontWeight:600,color:C.text,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em"}}>Recently Updated</div>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    {SEED_LIB.slice(0,5).map((item,i)=>(
+                    {[...published].sort((a,b)=>new Date(b.updated_at||b.published_at||0)-new Date(a.updated_at||a.published_at||0)).slice(0,5).map((item)=>(
                       <div key={item.id} onClick={()=>{setSel(item);setPage("library");}} style={{display:"flex",gap:9,cursor:"pointer",padding:"4px 0"}}
                         onMouseEnter={e=>e.currentTarget.style.opacity="0.8"}
                         onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
                         <div style={{width:32,height:44,borderRadius:4,background:item.cover_color||C.dim,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{item.emoji||"📖"}</div>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:11,fontWeight:500,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
-                          <div style={{fontSize:10,color:C.muted,marginTop:1}}>Ch. {item.chapters||1} · {i===0?"1h ago":i===1?"3h ago":i===2?"5h ago":i===3?"1d ago":"2d ago"}</div>
+                          <div style={{fontSize:10,color:C.muted,marginTop:1}}>Ch. {item.chapters||1}</div>
                         </div>
                         <Tag c={C.teal} sx={{fontSize:9,alignSelf:"center"}}>New</Tag>
                       </div>
                     ))}
                   </div>
                 </div>
+                )}
                 <div style={{background:C.card,borderRadius:12,padding:"14px",border:`0.5px solid ${C.border}`}}>
                   <div style={{fontSize:11,fontWeight:600,color:C.text,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em"}}>Browse by genre</div>
                   <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
@@ -494,7 +515,7 @@ export default function MangaMultiVerse() {
           <div>
             {sel?(
               <div style={{animation:"fadeUp .2s ease"}}>
-                <button onClick={()=>setSel(null)} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:12,padding:"0 0 16px",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>← Library</button>
+                <button onClick={()=>setSel(null)} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:12,padding:"0 0 16px",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>{t("library.back")}</button>
                 <div style={{borderRadius:14,overflow:"hidden",marginBottom:20,position:"relative",background:sel.cover_color||rndCover(),minHeight:160}}>
                   <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)"}}/>
                   <div style={{position:"relative",zIndex:1,padding:"24px 24px",display:"flex",gap:18,alignItems:"flex-start"}}>
@@ -559,19 +580,21 @@ export default function MangaMultiVerse() {
                     <div style={{textAlign:"center",padding:"8px",fontSize:11,color:C.muted}}>+ {(sel.chapters||1)-8} more chapters</div>
                   )}
                 </div>
+                {published.filter(s=>s.id!==sel.id).length>0&&(
                 <div style={{marginTop:24,paddingTop:16,borderTop:`0.5px solid ${C.border}`}}>
                   <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:10}}>More like this</div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
-                    {SEED_LIB.filter(s=>s.id!==sel.id).slice(0,4).map(item=>(
-                      <CoverCard key={item.id} item={item} onClick={()=>setSel(item)}/>
+                    {published.filter(s=>s.id!==sel.id).slice(0,4).map(item=>(
+                      <CoverCard key={item.id} item={item} aiMade onClick={()=>setSel(item)}/>
                     ))}
                   </div>
                 </div>
+                )}
               </div>
             ):(
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}>
-                  <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search series or author…" style={{flex:1,minWidth:180,padding:"8px 14px",borderRadius:8,border:`0.5px solid ${C.border2}`,background:C.card,color:C.text,fontSize:13,fontFamily:"inherit",outline:"none"}}/>
+                  <input value={q} onChange={e=>setQ(e.target.value)} placeholder={t("library.searchPlaceholder")} style={{flex:1,minWidth:180,padding:"8px 14px",borderRadius:8,border:`0.5px solid ${C.border2}`,background:C.card,color:C.text,fontSize:13,fontFamily:"inherit",outline:"none"}}/>
                   <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{GENRES.map(g=><button key={g} onClick={()=>setFG(g)} style={{fontSize:11,padding:"5px 10px",borderRadius:7,border:`0.5px solid ${fG===g?C.purple:C.border}`,background:fG===g?C.purple+"22":"transparent",color:fG===g?C.purpleL:C.muted,cursor:"pointer",fontFamily:"inherit"}}>{g}</button>)}</div>
                   <div style={{display:"flex",gap:5}}>{ORIGINS.map(o=><button key={o} onClick={()=>setFO(o)} style={{fontSize:11,padding:"5px 10px",borderRadius:7,border:`0.5px solid ${fO===o?C.pink:C.border}`,background:fO===o?C.pink+"22":"transparent",color:fO===o?C.pink:C.muted,cursor:"pointer",fontFamily:"inherit"}}>{o}</button>)}</div>
                 </div>
@@ -583,12 +606,12 @@ export default function MangaMultiVerse() {
         )}
 
         {reading&&(
-          <MangaReader story={reading} onBack={()=>{setReading(null);setSel(reading);}}/>
+          <MangaReader story={reading} onBack={()=>{setReading(null);setSel(reading);}} signedIn={!!(auth?.token && auth.token!=="demo")} reporterId={auth?.user?.id}/>
         )}
 
-        {page==="studio"&&<Studio user={auth?.user} credits={auth?.user?.credits} onUseCredits={onUseCredits} drafts={db.stories.filter(s=>s.status==="draft")} onSave={onSaveStory} onRequestAuth={()=>setShowAuth(true)} editStory={editStory} onEditConsumed={()=>setEditStory(null)}/>}
+        {page==="studio"&&<Studio user={auth?.user} credits={auth?.user?.credits} onUseCredits={onUseCredits} drafts={db.stories.filter(s=>s.status==="draft")} myStoryCount={db.stories.length} onSave={onSaveStory} onSaveTranslations={async (storyId, map)=>{ for (const [lang,data] of Object.entries(map||{})) await saveTranslation(storyId, lang, data, auth?.token); }} onSaveChapter={async (storyId, number, script, status)=>saveChapter(storyId, number, script, status, auth?.token)} onDeleteChapter={async (storyId, number)=>deleteChapter(storyId, number, auth?.token)} onSaveBible={async (storyId, data, prefs)=>saveBible(storyId, data, prefs, auth?.token)} onRequestAuth={()=>setShowAuth(true)} editStory={editStory} onEditConsumed={()=>setEditStory(null)} onPublished={()=>{ refreshPublic(); setDashTab("feed"); go("home"); }}/>}
 
-        {page==="agents"&&auth?.user?.role==="admin"&&<AgentsPage/>}
+        {page==="dashboard"&&auth?.user&&<AdminDashboard auth={auth} published={published} db={db} onOpenStory={onEditStory} onModerated={refreshPublic}/>}
 
         {page==="creator"&&(
           <CreatorDashboard
@@ -600,6 +623,8 @@ export default function MangaMultiVerse() {
             onViewStory={(s)=>{setSel(s);setPage("library");}}
             onEditStory={onEditStory}
             onSaveStory={onSaveStory}
+            onUnpublish={async (s)=>{ await onSaveStory({...s, status:"draft"}); refreshPublic(); setToast({msg:`"${s.title}" unpublished — moved back to your drafts`,type:"ok"}); }}
+            onDelete={async (s)=>{ await db.remove(s.id); try{ localStorage.removeItem(`mv_panels_${s.id}`); }catch{} refreshPublic(); if(sel?.id===s.id) setSel(null); setToast({msg:`"${s.title}" deleted`,type:"ok"}); }}
             setToast={setToast}
           />
         )}

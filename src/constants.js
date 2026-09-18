@@ -12,18 +12,41 @@ export const C = {
 // ═══════════════════════════════════════════════════════════════
 // STATIC DATA
 // ═══════════════════════════════════════════════════════════════
-export const SEED_LIB = [
-  {id:"s1",emoji:"⚔️",title:"Crimson Chronicle",author:"Han Seojun",origin:"KR",genre_tags:["Dark fantasy","Action"],chapters:5,rating:4.8,views:"2.4M",langs:38,status:"ongoing",cover_color:"#3d0d2e"},
-  {id:"s2",emoji:"🌸",title:"Sakura Protocol",author:"Tanaka Ren",origin:"JP",genre_tags:["Sci-fi","Romance"],chapters:5,rating:4.9,views:"5.1M",langs:51,status:"ongoing",cover_color:"#0a2a1a"},
-  {id:"s3",emoji:"🔮",title:"Void Monarch",author:"Kim Daehyun",origin:"KR",genre_tags:["Fantasy","Action"],chapters:5,rating:4.6,views:"980K",langs:22,status:"ongoing",cover_color:"#1a0d3e"},
-  {id:"s4",emoji:"🐉",title:"Dragon Empire",author:"Liu Wei",origin:"CN",genre_tags:["Historical","Epic"],chapters:5,rating:4.5,views:"8.2M",langs:61,status:"completed",cover_color:"#0a2a0a"},
-  {id:"s5",emoji:"🏙️",title:"Neon Solitude",author:"Maria O.",origin:"GL",genre_tags:["Sci-fi","Drama"],chapters:5,rating:4.7,views:"340K",langs:17,status:"ongoing",cover_color:"#0a0a2e"},
-  {id:"s6",emoji:"⚡",title:"Storm Ascension",author:"Park Ji-Ho",origin:"KR",genre_tags:["Action","Sports"],chapters:5,rating:4.7,views:"3.3M",langs:44,status:"ongoing",cover_color:"#2a1e00"},
-];
+// Example/demo manga removed — the platform surfaces only real creator-published stories now.
+export const SEED_LIB = [];
 
 export const GENRES  = ["All","Action","Fantasy","Romance","Sci-fi","Drama","Mystery","Historical","Sports","Thriller"];
 export const ORIGINS = ["All","JP","KR","CN","GL"];
-export const LANGS   = ["English","Korean","Japanese","Spanish","French","Arabic","Portuguese","German","Hindi","Chinese"];
+// Global language menu, grouped by region. Any of these can be translated to on demand (the reader
+// translates the chapter live via P_TRANSLATE). LANGS is derived flat for simple consumers.
+export const LANG_GROUPS = [
+  { region: "Global",                      langs: ["English"] },
+  { region: "East Asia",                   langs: ["Korean","Japanese","Chinese (Simplified)","Chinese (Traditional)","Cantonese","Mongolian"] },
+  { region: "South Asia",                  langs: ["Hindi","Bengali","Urdu","Punjabi","Tamil","Telugu","Marathi","Gujarati","Kannada","Malayalam","Nepali","Sinhala"] },
+  { region: "Southeast Asia",              langs: ["Indonesian","Malay","Thai","Vietnamese","Filipino (Tagalog)","Burmese","Khmer","Lao"] },
+  { region: "Middle East & Central Asia",  langs: ["Arabic","Persian (Farsi)","Turkish","Hebrew","Kurdish","Pashto","Uzbek","Kazakh","Azerbaijani"] },
+  { region: "Europe",                      langs: ["Spanish","Portuguese","French","German","Italian","Dutch","Polish","Ukrainian","Russian","Romanian","Greek","Czech","Hungarian","Swedish","Norwegian","Danish","Finnish","Bulgarian","Serbian","Croatian","Slovak","Catalan","Irish"] },
+  { region: "Africa",                      langs: ["Swahili","Amharic","Hausa","Yoruba","Igbo","Zulu","Afrikaans","Somali","Oromo"] },
+  { region: "Americas",                    langs: ["Brazilian Portuguese","Latin American Spanish","Haitian Creole","Quechua"] },
+];
+export const LANGS = LANG_GROUPS.flatMap(g => g.langs);
+// The highest-reach languages for a global manga/webtoon audience — surfaced at the top of the
+// translation pickers as "Recommended" so creators pre-generate the ones that matter most.
+export const RECOMMENDED_LANGS = ["Spanish","Portuguese","French","Indonesian","Chinese (Simplified)","Japanese","Korean","German","Russian","Arabic"];
+
+// Launch gate (client mirror of the server's RELEASE_MODE). OFF (default) = demo/beta: keys are
+// server-side but auth/credit enforcement is relaxed. ON = release: guests can't trigger live AI.
+export const RELEASE_MODE = ((typeof import.meta !== "undefined" && import.meta.env?.VITE_RELEASE_MODE) ?? "false") === "true";
+// Cap languages pre-translated in one publish (mirror of api/_pricing.js LIMITS).
+export const MAX_LANGS_PER_PUBLISH = 12;
+// Credit grant for new signups while in demo/beta (was 840). ~2-3 stories. Mirror of api/_pricing.js.
+export const DEMO_CREDITS = 120;
+// Multi-language translation is OFF in demo (English only) to save tokens; it turns on at launch.
+export const TRANSLATION_ENABLED = RELEASE_MODE;
+// Demo caps (unlimited at launch): up to DEMO_MAX_STORIES separate manga, each up to DEMO_MAX_CHAPTERS
+// chapters. Depth over breadth — fewer stories, more chapters each.
+export const DEMO_MAX_STORIES = 2;
+export const DEMO_MAX_CHAPTERS = 3;
 export const SEEDS   = [
   // Murim / martial arts
   "A crippled martial artist gains the memories of the murim world's greatest killer",
@@ -83,10 +106,15 @@ export const STYLE_GUIDE = {
   "KR-EN":  "Korean manhwa style (full colour vertical scroll, cinematic panels) with English dialogue",
   "CN-EN":  "Chinese manhua style (rich colour, historical or fantasy setting) with English dialogue",
   "US-EN":  "American comics style (bold outlines, dynamic poses, speech bubbles) with English dialogue",
-  "JP-KR":  "Japanese manga style with Korean dialogue",
-  "JP-ES":  "Japanese manga style with Spanish dialogue",
-  "JP-FR":  "Japanese manga style with French dialogue",
   "GL-EN":  "Original global style mixing Eastern and Western influences with English dialogue",
   "PRISMA": "Prisma — the MangaMultiVerse house format: full-colour, cinematic vertical-scroll storytelling that fuses manhwa polish, expressive manga faces, and bold comic composition, told through a continuous inner-voice caption thread; English-first and born translatable",
+};
+
+// Every format authors in ENGLISH (the base language) and the reader translates on demand for readers
+// whose language isn't English — so an English-native reader always sees the original with no
+// translation step. Kept as a map so a format could opt into native authoring again later.
+export const STYLE_NATIVE = {
+  "JP-EN": "English", "KR-EN": "English", "CN-EN": "English", "US-EN": "English",
+  "GL-EN": "English", "PRISMA": "English",
 };
 

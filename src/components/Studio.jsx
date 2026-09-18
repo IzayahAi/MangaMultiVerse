@@ -1,17 +1,19 @@
 ﻿import { useState, useRef, useEffect } from "react";
-import { SEEDS, rndEmoji, rndCover, MOOD_PALETTES, getMood } from "../constants.js";
+import { SEEDS, rndEmoji, rndCover, MOOD_PALETTES, getMood, LANG_GROUPS, RECOMMENDED_LANGS, STYLE_NATIVE, MAX_LANGS_PER_PUBLISH, TRANSLATION_ENABLED, DEMO_MAX_STORIES, DEMO_MAX_CHAPTERS, RELEASE_MODE } from "../constants.js";
 import { useTheme } from "../ThemeContext.jsx";
 import {
-  askClaude, generatePanelImage,
+  askClaude, generatePanelImage, trainCharacterLora,
   generateElevenAudio, pickElevenVoice, HAS_ELEVEN, ELEVEN_VOICE_OPTIONS,
   AGENT_STEP1, AGENT_STEP2, AGENT_STEP3, AGENT_STEP4,
-  P_SCRIPT, P_SCRIPT_BATCH, P_CHAR, P_VOICES, P_TRANSLATE,
-  P_TRENDING_SEEDS, P_PERSONAL_SEEDS, P_MORE_LIKE_THIS, P_WIZARD_BUILD,
+  P_SCRIPT, P_SCRIPT_BATCH, P_CHAPTER, P_BIBLE_UPDATE, P_CHAR, P_VOICES, P_TRANSLATE, translateChapter, translateUpdated,
+  P_TRENDING_SEEDS, P_PERSONAL_SEEDS, P_MORE_LIKE_THIS, P_WIZARD_BUILD, P_EASTER_EGG,
 } from "../lib/claude.js";
+import { fetchTranslatedLangs, fetchTranslation, fetchChapters, fetchChapter, fetchBible } from "../lib/supabase.js";
 import { Tag, Btn, Field, Sec, Spinner, Toast } from "./UI.jsx";
+import { BUBBLE_FONT, isBigPanel, onArtBubbles, ThoughtCloud, spreadShots, spreadCellSpan, buildCharIntros, firstAppearances, CharIntroCard, NarrationBox } from "./mangaBubbles.jsx";
 import PublishModal from "./PublishModal.jsx";
 
-const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, editStory, onEditConsumed}) => {
+const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, onSaveTranslations, onSaveChapter, onDeleteChapter, onSaveBible, onRequestAuth, editStory, onEditConsumed, onPublished}) => {
   const C = useTheme();
   const DRAFT_KEY = "mv_studio_draft";
   const savedDraft = (() => { try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || "null"); } catch { return null; } })();
@@ -30,16 +32,24 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
   const [tab,setTab]       = useState(savedDraft?.tab || "concept");
   const [showPub,setShowPub]= useState(false);
   const [publishing,setPub] = useState(false);
+  const [pubProgress,setPubProgress] = useState(""); // "Translating to French… (2/5)" during publish
   const [toast,setToast]   = useState(null);
   const [tool,setTool]     = useState("story");
   const [voices,setVoices] = useState(savedDraft?.voices || null);
   const [agentStep,setAgentStep] = useState(0);
   const [panelImages,setPanelImages] = useState({});
   const [panelsLoading,setPanelsLoading] = useState(false);
+  // First-appearance character intro nameplates for the reader preview.
+  const charIntroMap = firstAppearances(script?.panels, buildCharIntros({ ...(story||{}), script }));
+  const captionVariant = style === "US-EN" ? "comic" : "manga"; // Comics art style → hand-lettered caption boxes
   const [panelProgress,setPanelProgress] = useState(0);
   const [translation,setTranslation] = useState(savedDraft?.translation || null);
-  const [transLang,setTransLang] = useState(savedDraft?.transLang || "Spanish");
+  const [transLangs,setTransLangs] = useState(savedDraft?.transLangs || []); // languages to pre-translate
   const [transLoading,setTransLoading] = useState(false);
+  const [transProgress,setTransProgress] = useState("");
+  const [storedLangs,setStoredLangs] = useState([]); // languages already saved in the translations store
+  const ALL_TRANS = LANG_GROUPS.flatMap(g=>g.langs).filter(l=>l!=="English");
+  const togTrans = l => setTransLangs(p => p.includes(l) ? p.filter(x=>x!==l) : [...p,l]);
   const [recMode,setRecMode]         = useState("seeds");
   const [trendingSeeds,setTrending]  = useState([]);
   const [trendingLoading,setTrendingLoad] = useState(false);
@@ -50,13 +60,22 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
   const [wizard,setWizard]           = useState({hero:"",want:"",obstacle:"",world:"",twist:""});
   const [wizardResult,setWizardResult] = useState(null);
   const [wizardLoading,setWizardLoad]  = useState(false);
-  const [panelCount,setPanelCount]     = useState(savedDraft?.panelCount || 20);
+  const [panelCount,setPanelCount]     = useState(savedDraft?.panelCount || 50);
   const [useNarrator,setUseNarrator]   = useState(savedDraft?.useNarrator || false);
   const [thoughtStyle,setThoughtStyle] = useState(savedDraft?.thoughtStyle || "caption"); // "caption" (webtoon) | "bubble" (comic)
   const [scriptProgress,setScriptProgress] = useState("");
   const [editingId,setEditingId]       = useState(savedDraft?.editingId || null);
   const [editStatus,setEditStatus]     = useState(savedDraft?.editStatus || null);
+  const [chapterNum,setChapterNum]     = useState(savedDraft?.chapterNum || 1); // chapter currently open in the editor
+  const [chapterCount,setChapterCount] = useState(savedDraft?.chapterCount || 1); // total chapters that exist for this story
+  const [chapterBusy,setChapterBusy]   = useState(false); // generating/switching a chapter
+  const [bible,setBible]               = useState(null);  // Story Brain: living bible for this story
+  const [bibleBusy,setBibleBusy]       = useState(false); // bible being (re)built from a chapter
   const [regenPanel,setRegenPanel]     = useState(null); // panel.number currently regenerating
+  const [training,setTraining]         = useState(false); // character LoRA training in progress
+  const [trainStatus,setTrainStatus]   = useState("");    // training progress message
+  const [coverArt,setCoverArt]         = useState(savedDraft?.coverArt || null); // {url, caption, scene} — bonus non-canon cover
+  const [coverLoading,setCoverLoading] = useState(false);
   const [editMode,setEditMode]         = useState(false); // manual editing of text fields
   const [speaking,setSpeaking]         = useState(null);  // which voice is currently playing
   const [voiceOverrides,setVoiceOverrides] = useState(savedDraft?.voiceOverrides || {}); // { character: elevenVoiceId }
@@ -64,6 +83,8 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
   const ref                = useRef(null);
   const audioRef           = useRef(null);
   const playTokenRef       = useRef(null);
+  const autoSaveRef        = useRef(null); // debounce timer for cloud auto-save
+  const lastSavedSigRef    = useRef("");   // skip redundant auto-saves
 
   useEffect(()=>{ if(stream) ref.current?.scrollIntoView({behavior:"smooth"}); },[stream]);
 
@@ -71,21 +92,40 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
   useEffect(() => {
     try {
       if (story || seed) {
-        localStorage.setItem(DRAFT_KEY, JSON.stringify({ step, seed, genre, tone, style, demographic, story, script, cb, voices, translation, transLang, tab, panelCount, useNarrator, thoughtStyle, editingId, editStatus, voiceOverrides }));
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({ step, seed, genre, tone, style, demographic, story, script, cb, voices, translation, transLangs, tab, panelCount, useNarrator, thoughtStyle, editingId, editStatus, voiceOverrides, coverArt }));
       }
     } catch {}
-  }, [step, seed, genre, tone, style, demographic, story, script, cb, voices, translation, transLang, tab, editingId, editStatus, voiceOverrides, thoughtStyle]);
+  }, [step, seed, genre, tone, style, demographic, story, script, cb, voices, translation, transLangs, tab, editingId, editStatus, voiceOverrides, thoughtStyle, coverArt]);
+
+  // Which languages are already pre-translated in the store — so we can skip them and save tokens.
+  useEffect(() => {
+    const sid = editingId || story?.id;
+    if (!sid) { setStoredLangs([]); return; }
+    let active = true;
+    fetchTranslatedLangs(sid).then(ls => { if (active) setStoredLangs(Array.isArray(ls) ? ls : []); });
+    return () => { active = false; };
+  }, [editingId, story?.id, tab]);
 
   // Load an existing story sent in for editing (from the Creator dashboard / story page)
   useEffect(() => {
     if (!editStory?._loadedAt) return;
-    setStory(editStory);
+    // support_characters may live on the story, or (for remote-synced stories) stashed in script.
+    setStory({...editStory, support_characters: editStory.support_characters || editStory.script?.support_characters || []});
     setScript(editStory.script || null);
     if (editStory.script?.thought_style) setThoughtStyle(editStory.script.thought_style);
     setCb(editStory.character_brief || null);
+    setCoverArt(editStory.cover_art || editStory.script?.cover_art || null);
     setVoices(editStory.voices || null);
     setEditingId(editStory.id || null);
     setEditStatus(editStory.status || null);
+    setChapterNum(1);
+    setChapterCount(editStory.chapters || 1);
+    // Discover any chapters 2+ that live in the chapters table (best-effort).
+    if (editStory.id) fetchChapters(editStory.id).then(rows => {
+      if (Array.isArray(rows) && rows.length) setChapterCount(Math.max(editStory.chapters || 1, ...rows.map(r => r.number || 1)));
+    });
+    // Load this story's living bible (Story Brain), if any.
+    if (editStory.id) fetchBible(editStory.id).then(row => { if (row?.data) setBible(row.data); }); else setBible(null);
     // Restore any panel images saved for this story
     try {
       const saved = localStorage.getItem(`mv_panels_${editStory.id}`);
@@ -96,20 +136,22 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
     onEditConsumed?.();
   }, [editStory?._loadedAt]);
 
-  // Auto-load fresh AI seeds on mount so prompts are always different
-  useEffect(() => {
-    let active = true;
-    const load = async () => {
-      setTrendingLoad(true);
-      const r = await askClaude(P_TRENDING_SEEDS(genre, style), ()=>{});
-      if (active && r?.seeds) setTrending(r.seeds);
-      if (active) setTrendingLoad(false);
-    };
-    load();
-    return () => { active = false; };
-  }, []);
+  // Seeds are NO LONGER auto-generated on mount — that fired a Claude call (token spend) before the user
+  // did anything. The seed screen shows a "✦ Load AI-generated trending seeds" button instead (fetchTrending),
+  // so generation only happens when the user asks for it.
+
+  // Demo/beta: creating requires a signed-in account so all generated manga saves to the cloud and is
+  // ready to publish at launch. Reading stays open to guests. Returns false (and prompts sign-in) if
+  // the visitor isn't signed in.
+  const requireAuth = () => {
+    if (user) return true;
+    setToast({ msg: "Create a free account to save your manga — no payment, it's just yours to keep.", type: "warn" });
+    onRequestAuth?.();
+    return false;
+  };
 
   const gen = async (prompt, onDone) => {
+    if (!requireAuth()) return;
     setLoad(true); setStream("");
     const r = await askClaude(prompt, (text) => setStream(text));
     setLoad(false);
@@ -118,6 +160,13 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
 
   const genStory = async () => {
     if(!seed.trim()) return;
+    if (!requireAuth()) return;
+    // Demo cap: a creator can make up to DEMO_MAX_CHAPTERS manga (each is a Chapter 1). Editing an
+    // existing one (editingId set) is always allowed; only NEW creations count. Unlimited at launch.
+    if (!RELEASE_MODE && !editingId && (myStoryCount || 0) >= DEMO_MAX_STORIES) {
+      setToast({ msg: `Demo limit: ${DEMO_MAX_STORIES} stories max (up to ${DEMO_MAX_CHAPTERS} chapters each). Add chapters to what you've made — full access opens at launch.`, type: "warn" });
+      return;
+    }
     if (user && (credits ?? 0) < 4) {
       setToast({msg:"Not enough credits — you need 4 to generate a story.",type:"err"});
       return;
@@ -171,6 +220,9 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
           beats: typeof a.beats === "string" ? a.beats : fixStr(a) || "",
         })) : [],
         support_characters: Array.isArray(prev.support_characters) ? prev.support_characters : [],
+        subplots: fix(prev.subplots),
+        chapter_one_beats: fix(prev.chapter_one_beats),
+        factions: Array.isArray(prev.factions) ? prev.factions : [],
         protagonist: fixCharacter(prev.protagonist),
         antagonist: fixCharacter(prev.antagonist),
         visual_style_notes: fixStr(prev.visual_style_notes),
@@ -196,6 +248,7 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
   const stripNarration = (panels) => useNarrator ? panels : (panels||[]).map(p => ({...p, dialogue: (p.dialogue||[]).filter(d => d.type !== "narration")}));
 
   const genScript = async () => {
+    if (!requireAuth()) return;
     setTab("script"); setLoad(true); setScript(null); setScriptProgress("");
     const BATCH = 6; // panels per Claude call — smaller batches avoid truncation now that scenes are richer
     const batches = Math.ceil(panelCount / BATCH);
@@ -204,7 +257,7 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
       // Small chapter — single call
       const r = await askClaude(P_SCRIPT(story, panelCount, useNarrator, demographic), t => setStream(t));
       setLoad(false);
-      if (r) { r.panels = stripNarration(r.panels); setScript(r); }
+      if (r) { r.panels = stripNarration(r.panels); setScript(r); updateBible(chapterNum, r); }
       return;
     }
 
@@ -236,9 +289,15 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
         allPanels = r.panels || [];
         prevSummary = buildRecap(allPanels);
       } else {
-        // Subsequent batches — get panel array only, continuing the exact thread
-        const raw = await askClaude(P_SCRIPT_BATCH(story, start, end, panelCount, prevSummary, useNarrator, demographic), t => setStream(t));
-        if (!raw) continue;
+        // Subsequent batches — get panel array only, continuing the exact thread.
+        // Retry a failed batch a couple times (with backoff) so a transient backend blip doesn't leave a
+        // half-written chapter — the failure mode that stopped a script mid-way at panel ~42.
+        let raw = null;
+        for (let attempt = 0; attempt < 3 && !raw; attempt++) {
+          if (attempt > 0) { setScriptProgress(`Writing panels ${start}–${end} of ${panelCount}… (retry ${attempt})`); await new Promise(r => setTimeout(r, 1500 * attempt)); }
+          raw = await askClaude(P_SCRIPT_BATCH(story, start, end, panelCount, prevSummary, useNarrator, demographic), t => setStream(t));
+        }
+        if (!raw) { setToast({ msg: `Couldn't write panels ${start}–${end} (backend hiccup). Script saved up to panel ${allPanels.length} — hit ↻ Rewrite to try again.`, type: "warn" }); break; }
         // raw might be an array or wrapped object
         const panels = Array.isArray(raw) ? raw : (raw.panels || []);
         allPanels = [...allPanels, ...panels];
@@ -250,17 +309,56 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
     setLoad(false);
     setScriptProgress("");
     if (allPanels.length > 0) {
-      setScript({ chapter_title: chapterTitle, chapter_summary: chapterSummary, panels: stripNarration(allPanels), chapter_end_hook: chapterEndHook });
+      const builtCh = { chapter_title: chapterTitle, chapter_summary: chapterSummary, panels: stripNarration(allPanels), chapter_end_hook: chapterEndHook };
+      setScript(builtCh); updateBible(chapterNum, builtCh);
     }
   };
   const genChar     = () => { setTab("char");   gen(P_CHAR(story),   r=>setCb(r)); };
   const genVoices   = () => { setTab("voices"); gen(P_VOICES(story), r=>setVoices(r)); };
+  // Translate the chapter into EVERY selected language (batched 12 panels/call), save each to the
+  // translations store so readers get them instantly, and preview the last one.
   const genTranslate = async () => {
-    if (!script) return;
+    if (!TRANSLATION_ENABLED) { setToast({ msg: "Translation is English-only during the demo — it opens up at launch.", type: "warn" }); return; }
+    if (!requireAuth()) return;
+    if (!script?.panels?.length || !transLangs.length) return;
     setTransLoading(true); setTranslation(null);
-    const r = await askClaude(P_TRANSLATE(script, transLang, voices, story), ()=>{});
+    const sid = editingId || story?.id;
+    // A stored language is re-checked against the current script: panels whose dialogue changed since
+    // it was translated (e.g. you edited a line or fixed a panel) get re-translated; unchanged panels
+    // are reused, so nothing already-done is paid for twice.
+    let existing = storedLangs;
+    if (sid) { try { existing = await fetchTranslatedLangs(sid); } catch { existing = storedLangs; } }
+    const todo = transLangs.filter(l => l !== "English");
+    const savedMap = {}; let lastPreview = null;
+    let fresh = 0, patched = 0, upToDate = 0;
+    for (let li = 0; li < todo.length; li++) {
+      const lang = todo[li];
+      const wasStored = existing.includes(lang);
+      try {
+        const prev = wasStored && sid ? await fetchTranslation(sid, lang) : null;
+        const data = await translateUpdated(script, lang, voices, story, prev,
+          (d, t) => setTransProgress(`${lang} (${li + 1}/${todo.length}) · ${d}/${t} batches`));
+        if (data) {
+          lastPreview = data;
+          if (data._updated === 0) { upToDate++; }          // stored & nothing stale → skip save
+          else { savedMap[lang] = data; if (prev) patched++; else fresh++; }
+        }
+      } catch (e) { console.warn(`translate ${lang}:`, e.message); }
+    }
+    setTransProgress("");
+    if (sid && Object.keys(savedMap).length) {
+      try { await onSaveTranslations?.(sid, savedMap); } catch (e) { console.warn("save translations:", e.message); }
+      try { const ls = await fetchTranslatedLangs(sid); setStoredLangs(Array.isArray(ls) ? ls : []); } catch {}
+    }
     setTransLoading(false);
-    if (r) setTranslation(r);
+    if (lastPreview) setTranslation(lastPreview);
+    const saved = fresh + patched;
+    const parts = [];
+    if (fresh) parts.push(`${fresh} new`);
+    if (patched) parts.push(`${patched} updated for edited panels`);
+    if (upToDate) parts.push(`${upToDate} already current`);
+    if (saved) setToast({ msg: (sid ? `Translations saved — ${parts.join(" · ")}` : `Translated ${saved} language${saved>1?"s":""} · save or publish to store them`), type: "ok" });
+    else setToast({ msg: upToDate ? `All ${upToDate} selected language${upToDate>1?"s are":" is"} up to date — no panels changed` : "No languages to translate", type: upToDate ? "ok" : "warn" });
   };
 
   // Build the [description, characterContext] for a single panel — injecting only the
@@ -269,61 +367,265 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
     const brief = charBrief?.design_brief;
     const cast = {}; // { lowercaseName: {name, sheet} }
     const addCast = (name, sheet) => { if (name && sheet) cast[name.toLowerCase()] = { name, sheet }; };
+    // Detailed, labelled identity block — the more specific and consistent the tokens, the less the
+    // face/outfit drifts between panels. "ALWAYS identical" nudges the model to reuse the same design.
     addCast(story?.protagonist?.name, brief
-      ? `${story?.protagonist?.name} (protagonist): ${brief.body_type||""}, ${brief.hair||""}, ${brief.eyes||""}, wearing ${brief.default_outfit||""}${brief.signature_accessory?`, ${brief.signature_accessory}`:""}`
-      : story?.protagonist?.name && `${story.protagonist.name} (protagonist): ${story.protagonist.appearance}`);
-    addCast(story?.antagonist?.name, story?.antagonist?.name && `${story.antagonist.name} (antagonist): ${story.antagonist.appearance}`);
-    (story?.support_characters||[]).forEach(c => addCast(c.name, c.name && `${c.name}: ${c.appearance || c.hook || c.role || ""}`));
+      ? `${story?.protagonist?.name} (protagonist, ALWAYS identical appearance) — build: ${brief.body_type||""}; face: ${brief.face||""}; eyes: ${brief.eyes||""}; hair: ${brief.hair||""}; always wearing: ${brief.default_outfit||""}${brief.signature_accessory?`; signature item: ${brief.signature_accessory}`:""}`
+      : story?.protagonist?.name && `${story.protagonist.name} (protagonist, ALWAYS identical appearance): ${story.protagonist.appearance}`);
+    addCast(story?.antagonist?.name, story?.antagonist?.name && `${story.antagonist.name} (antagonist, ALWAYS identical appearance): ${story.antagonist.appearance}`);
+    (story?.support_characters||[]).forEach(c => addCast(c.name, c.name && `${c.name} (ALWAYS identical appearance): ${c.appearance || c.hook || c.role || ""}`));
 
-    // Dialogue usually uses first names ("Kaito") while cast keys are full names ("kaito mori").
-    const castInPanel = (panel) => {
-      const speakers = (panel.dialogue||[]).map(d => (d.character||"").toLowerCase()).filter(Boolean);
+    // Resolve a loosely-written name ("Kaito", "the boy Kaito") to a cast member — tolerant of
+    // spelling variants ("Blackthorn" ~ "Blackthorne") via a ≤1-edit match on shared name tokens,
+    // but still returns null for a genuinely different/invented name (which then falls to inference).
+    const lev1 = (a, b) => {
+      if (a === b) return true;
+      const la = a.length, lb = b.length;
+      if (Math.abs(la - lb) > 1) return false;
+      let i = 0, j = 0, edits = 0;
+      while (i < la && j < lb) {
+        if (a[i] === b[j]) { i++; j++; }
+        else { if (++edits > 1) return false; if (la > lb) i++; else if (lb > la) j++; else { i++; j++; } }
+      }
+      return edits + (la - i) + (lb - j) <= 1;
+    };
+    const tokens = (s) => s.split(/\s+/).filter(t => t.length > 2);
+    const resolveName = (nm) => {
+      const low = (nm || "").toLowerCase().trim();
+      if (!low) return null;
+      if (cast[low]) return cast[low];
+      const qTok = tokens(low);
+      for (const key of Object.keys(cast)) {
+        if (key === low) return cast[key];
+        const kTok = tokens(key);
+        if (qTok.some(q => kTok.some(k => lev1(q, k)))) return cast[key]; // shared first/last name (±1 typo)
+      }
+      return null;
+    };
+
+    // Who is actually in the frame. Prefer the script's explicit per-panel `cast`;
+    // fall back to the old scene/dialogue name-matching for drafts written before `cast` existed.
+    // Legacy heuristic: infer presence from speakers + scene text (for drafts written before `cast`).
+    const heuristicCast = (panel) => {
+      const out = []; const seen = new Set();
+      const push = (c) => { if (c && !seen.has(c.name)) { seen.add(c.name); out.push(c); } };
+      const speakers = (panel.dialogue || []).map(d => (d.character || "").toLowerCase()).filter(Boolean);
       const sceneLc = (panel.scene || "").toLowerCase();
-      const present = [];
       for (const key of Object.keys(cast)) {
         const first = key.split(/\s+/)[0];
         const inSpeakers = speakers.some(sp => sp === key || sp.split(/\s+/)[0] === first || (first.length > 2 && sp.includes(first)));
         const inScene = sceneLc.includes(key) || (first.length > 2 && sceneLc.includes(first));
-        if (inSpeakers || inScene) present.push(cast[key].sheet);
+        if (inSpeakers || inScene) push(cast[key]);
       }
-      return present;
+      return out;
     };
 
-    return (panel, prevPanel) => {
-      const base = panel.scene || panel.scene_description || panel.composition || 'manga panel';
+    // Who is actually in the frame. Prefer the script's explicit per-panel `cast`;
+    // fall back to the heuristic when `cast` is absent OR when none of its names resolve
+    // (a name the story object never defined — e.g. an ungenerated support character) so a
+    // populated conversation panel never renders as an empty landscape.
+    const castInPanel = (panel) => {
+      if (Array.isArray(panel.cast) && panel.cast.length) {
+        const out = []; const seen = new Set();
+        panel.cast.forEach(nm => { const c = resolveName(nm); if (c && !seen.has(c.name)) { seen.add(c.name); out.push(c); } });
+        if (out.length) return out;
+        // Every explicit name failed to resolve — don't leave the frame empty; infer instead.
+        const inferred = heuristicCast(panel);
+        if (inferred.length) { console.warn("Panel cast unresolved:", panel.cast, "→ inferred", inferred.map(c=>c.name)); return inferred; }
+        return out; // genuinely nobody we can identify
+      }
+      if (Array.isArray(panel.cast)) return []; // explicit empty cast = intentional no-people frame
+      return heuristicCast(panel); // legacy draft: no cast field at all
+    };
+
+    // Stable seed per character name → FLUX re-rolls the SAME identity for that character
+    // in every panel they lead, which is the single biggest lever on look-consistency.
+    const seedFor = (name) => {
+      const s = (name || "").toLowerCase();
+      let h = 2166136261;
+      for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+      return Math.abs(h) % 2147483647;
+    };
+
+    // overrideScene: render a single SHOT of a spread panel instead of the whole panel's scene.
+    return (panel, prevPanel, overrideScene) => {
+      const isShot = !!overrideScene;
+      const base = overrideScene || panel.scene || panel.scene_description || panel.composition || 'manga panel';
+      // Ground the environment so panels show the WORLD, not a character on a blank background.
+      const world = story?.setting?.world ? ` World/setting: ${story.setting.world}${story.setting.description?` — ${String(story.setting.description).slice(0,90)}`:''}.` : "";
+      // Big/action beats get a dense, detailed cinematic composition (Part A: denser single images).
+      const dense = isBigPanel(panel) ? " Dense, highly detailed cinematic composition: multiple figures mid-motion, dynamic foreshortening, speed and impact lines, flying debris, intricate detailed background." : "";
       // Visual continuity: nudge consecutive panels to share the same setting/lighting so the chapter reads as one flowing scene
-      const cont = prevPanel ? ` Same location, lighting, and art continuity as the preceding moment: ${(prevPanel.scene||'').slice(0,120)}` : "";
-      const description = `${base}. Mood: ${panel.mood || 'dramatic'}. Panel type: ${panel.panel_type || 'half_page'}.${cont}`;
+      const cont = (prevPanel && !isShot) ? ` Same location, lighting, and art continuity as the preceding moment: ${(prevPanel.scene||'').slice(0,120)}` : "";
       const present = castInPanel(panel);
-      const characterContext = present.length ? present.join('. ') : "no characters in frame — focus entirely on the environment and atmosphere";
-      return [description, characterContext];
+      // Everyone who SPEAKS in this panel must be drawn, so the picture matches the conversation.
+      const spoken = (panel.dialogue || []).filter(d => d.type === "speech" || d.type === "thought");
+      for (const d of spoken) { const c = resolveName(d.character); if (c && !present.some(p => p.name === c.name)) present.push(c); }
+      // Translate the dialogue beat into VISUAL direction (expressions/pose), never literal text.
+      // Skip for individual shots — a shot is pure imagery; dialogue belongs to the whole spread.
+      let convo = "";
+      const speakers = [...new Set(spoken.map(d => d.character).filter(Boolean))];
+      if (speakers.length && !isShot) {
+        const talking = spoken.some(d => d.type === "speech");
+        convo = talking
+          ? ` This is a conversation beat: ${speakers.join(" and ")} ${speakers.length > 1 ? "talking to each other, mid-exchange" : "speaking"} — show them with mouths/expressions and body language that match a "${panel.mood || 'dramatic'}" tone, others reacting.`
+          : ` ${speakers[0]} is deep in thought — show a pensive, internal expression matching a "${panel.mood || 'dramatic'}" tone.`;
+      }
+      const description = `${base}.${world}${dense} Mood: ${panel.mood || 'dramatic'}. Shot: ${panel.panel_type || 'half_page'}.${convo}${cont}`;
+      const characterContext = present.length ? present.map(p => p.sheet).join('. ') : "no characters in frame — focus entirely on the environment and atmosphere";
+      // Seed the panel off the PROTAGONIST whenever they're in frame (so their look is requested
+      // identically across all their panels), else off the most prominent character present.
+      const protName = story?.protagonist?.name;
+      const lead = present.find(p => p.name === protName) || present[0];
+      const seed = lead ? seedFor(lead.name) : undefined;
+      // Use the trained character LoRA only when the protagonist is the lead in this frame.
+      const lora = (lead && lead.name === protName && charBrief?.lora?.url) ? charBrief.lora : null;
+      return [description, characterContext, seed, lora];
     };
   };
 
-  // Regenerate a single panel's image (creator didn't like what it made)
+  // Train a per-character LoRA so the protagonist looks IDENTICAL across every panel.
+  // Draws a reference sheet, trains a small model, and stores the weights on the character brief.
+  const lockCharacter = async () => {
+    if (training) return;
+    let brief = cb;
+    if (!brief && story?.protagonist?.name) {
+      setTraining(true); setTrainStatus("Designing character…");
+      brief = await askClaude(P_CHAR(story), () => {});
+      if (brief) { setCb(brief); onUseCredits?.(1); }
+    }
+    if (!brief) { setToast({ msg: "Generate a script/character first, then lock the character.", type: "warn" }); return; }
+    setTraining(true);
+    try {
+      const lora = await trainCharacterLora(brief, style, story?.protagonist?.name, (m) => setTrainStatus(m));
+      const next = { ...brief, lora };
+      setCb(next);
+      onUseCredits?.(5);
+      setToast({ msg: "✅ Character locked. Regenerate panels to apply the consistent look.", type: "success" });
+    } catch (e) {
+      console.error("LoRA training failed:", e);
+      setToast({ msg: `Couldn't lock character: ${e.message}. Panels still use seed-matching.`, type: "warn" });
+    } finally {
+      setTraining(false); setTrainStatus("");
+    }
+  };
+
+  // Generate a bonus NON-CANON "cover request" easter egg for the chapter intro (One Piece SBS style).
+  const generateEasterEgg = async () => {
+    if (coverLoading) return;
+    if (!story?.protagonist?.name) { setToast({ msg: "Create the story first, then add a cover.", type: "warn" }); return; }
+    setCoverLoading(true);
+    try {
+      const idea = await askClaude(P_EASTER_EGG(story), () => {});
+      if (!idea?.scene) throw new Error("couldn't dream one up");
+      const brief = cb?.design_brief;
+      const castStr = [
+        story.protagonist?.name && (brief
+          ? `${story.protagonist.name}: ${brief.body_type||""}, ${brief.hair||""}, ${brief.eyes||""}, wearing ${brief.default_outfit||""}`
+          : `${story.protagonist.name}: ${story.protagonist.appearance||""}`),
+        story.antagonist?.name && `${story.antagonist.name}: ${story.antagonist.appearance||""}`,
+        ...(story.support_characters||[]).map(c => `${c.name}: ${c.appearance||""}`),
+      ].filter(Boolean).join('. ').slice(0, 700);
+      const lora = cb?.lora?.url ? cb.lora : null;
+      const url = await generatePanelImage(`Bonus non-canon cover illustration (not part of the story): ${idea.scene}`, castStr, style, 424242, lora);
+      if (!url) throw new Error("image service didn't return art");
+      setCoverArt({ url, caption: idea.caption || "", scene: idea.scene });
+      onUseCredits?.(1);
+      setToast({ msg: "🎁 Easter-egg cover added to the chapter intro.", type: "success" });
+    } catch (e) {
+      setToast({ msg: `Couldn't make the cover: ${e.message}`, type: "warn" });
+    } finally {
+      setCoverLoading(false);
+    }
+  };
+
+  // A valid SPREAD has 2-4 sub-scene ("shots") strings; returns them, else null (normal panel).
+  const panelShots = (panel) => {
+    const s = Array.isArray(panel?.shots) ? panel.shots.filter(x => typeof x === "string" && x.trim().length > 3) : [];
+    return s.length >= 2 ? s.slice(0, 4) : null;
+  };
+
+  // Generate the image(s) for one panel — a single image, or one per shot for a spread.
+  // Spread images are keyed "<number>.<shotIndex>"; single images keep the integer key. Returns true if any rendered.
+  // seedBump lets a manual Redo re-roll to a genuinely DIFFERENT image each click (pass it a random
+  // number); the initial full generation passes 0 so panels keep their stable, consistent seeds.
+  const genImagesForPanel = async (panel, imager, prev, seedBump = 0) => {
+    const shots = panelShots(panel);
+    if (shots) {
+      const done = new Array(shots.length).fill(false);
+      // Up to 3 passes — retry ONLY the shots that failed, so one Redo fills every cell even when
+      // a shot blips (timeout/rate limit). Vary the seed each pass so a bad roll doesn't repeat.
+      for (let pass = 0; pass < 3; pass++) {
+        for (let si = 0; si < shots.length; si++) {
+          if (done[si]) continue;
+          const [d, cc, seed, lora] = imager(panel, prev, shots[si]);
+          const shotSeed = Number.isFinite(seed) ? (seed + seedBump + si * 7919 + pass * 131) % 2147483647 : undefined;
+          const img = await generatePanelImage(d, cc, style, shotSeed, lora);
+          if (img) { done[si] = true; setPanelImages(p => ({ ...p, [`${panel.number}.${si}`]: img })); }
+          await new Promise(r => setTimeout(r, 450));
+        }
+        if (done.every(Boolean)) break;
+        await new Promise(r => setTimeout(r, 900)); // breathe before retrying the stragglers
+      }
+      return done.some(Boolean);
+    }
+    // Single panel — retry a couple times if it blips.
+    for (let pass = 0; pass < 3; pass++) {
+      const [d, cc, seed, lora] = imager(panel, prev);
+      const s = Number.isFinite(seed) ? (seed + seedBump + pass * 131) % 2147483647 : undefined;
+      const img = await generatePanelImage(d, cc, style, s, lora);
+      if (img) { setPanelImages(p => ({ ...p, [panel.number]: img })); return true; }
+      await new Promise(r => setTimeout(r, 900));
+    }
+    return false;
+  };
+
+  // Regenerate a single panel's image(s) (creator didn't like what it made)
   const regenerateOnePanel = async (panel) => {
+    if (!requireAuth()) return;
     if (regenPanel) return; // one at a time
     setRegenPanel(panel.number);
-    const imager = buildPanelImager(cb);
-    const pIdx = (script?.panels||[]).findIndex(p => p.number === panel.number);
-    const prev = pIdx > 0 ? script.panels[pIdx-1] : null;
-    const [description, characterContext] = imager(panel, prev);
-    const img = await generatePanelImage(description, characterContext, style);
-    if (img) {
-      setPanelImages(prev => {
-        const next = { ...prev, [panel.number]: img };
-        persistPanels(editingId || story?.id, next);
-        return next;
-      });
-      onUseCredits?.(1);
-    } else {
+    // try/finally so the "in progress" flag ALWAYS clears — otherwise one thrown error would jam the
+    // guard above and block every future Redo. We DON'T pre-delete the old image: genImagesForPanel
+    // overwrites each shot in place as the new one lands, so the panel keeps showing its current art
+    // the whole time and a failed/blipped regen leaves the old image intact instead of a blank.
+    try {
+      const imager = buildPanelImager(cb);
+      const pIdx = (script?.panels||[]).findIndex(p => p.number === panel.number);
+      const prev = pIdx > 0 ? script.panels[pIdx-1] : null;
+      // Random seed bump so every Redo click yields a genuinely NEW image (better odds of a text-free roll).
+      const ok = await genImagesForPanel(panel, imager, prev, Math.floor(Math.random() * 2000000000));
+      if (ok) {
+        setPanelImages(cur => { persistPanels(editingId || story?.id, cur); return cur; });
+        onUseCredits?.(1);
+      } else {
+        setToast({msg:"Couldn't regenerate that panel — try again",type:"warn"});
+      }
+    } catch (e) {
+      console.warn("regenerate panel failed:", e?.message);
       setToast({msg:"Couldn't regenerate that panel — try again",type:"warn"});
+    } finally {
+      setRegenPanel(null);
     }
-    setRegenPanel(null);
+  };
+
+  // Throw away the current draft's panel art and restore the PUBLISHED cloud version (the panels the
+  // story was opened with). Lets you regenerate/fine-tune freely, then bail out cleanly if it went bad.
+  const revertToPublished = () => {
+    const published = story?.script?.panel_images || {};
+    if (!Object.keys(published).length) { setToast({msg:"No published panels to revert to yet.",type:"warn"}); return; }
+    if (!window.confirm("Discard your current draft panel changes and restore the published version?")) return;
+    setPanelImages(published);
+    persistPanels(editingId || story?.id, published);
+    setToast({msg:"Restored the published panels ✓",type:"ok"});
   };
 
   const genPanels = async () => {
+    if (!requireAuth()) return;
     if (!script?.panels) return;
+    // Guard the destructive "regenerate ALL" — it replaces every panel. To fix a few, use ↻ Redo.
+    if (Object.keys(panelImages).length &&
+        !window.confirm(`Regenerate ALL ${script.panels.length} panels? This replaces every current panel image.\n\nTo fix only a few panels, click Cancel and use ↻ Redo on each panel instead.`)) return;
     setPanelImages({}); setPanelProgress(0); setPanelsLoading(true);
     setTab("reader");
 
@@ -350,9 +652,8 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
       const batch = panels.slice(i, i + PARALLEL);
       await Promise.all(batch.map(async (panel, j) => {
         const globalIdx = i + j;
-        const [description, panelCharacterContext] = imager(panel, globalIdx > 0 ? panels[globalIdx-1] : null);
-        const img = await generatePanelImage(description, panelCharacterContext, style);
-        if (img) { setPanelImages(prev => ({ ...prev, [panel.number]: img })); succeeded++; }
+        const ok = await genImagesForPanel(panel, imager, globalIdx > 0 ? panels[globalIdx-1] : null);
+        if (ok) succeeded++;
         done++;
         setPanelProgress(Math.round((done / panels.length) * 100));
       }));
@@ -385,7 +686,7 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
 
   const fetchTrending = async () => {
     setTrendingLoad(true);
-    const r = await askClaude(P_TRENDING_SEEDS(genre, style), ()=>{});
+    const r = await askClaude(P_TRENDING_SEEDS((genre||"").split(" + ")[0].trim() || genre, style), ()=>{});
     if (r?.seeds) setTrending(r.seeds);
     setTrendingLoad(false);
   };
@@ -508,6 +809,12 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
     speakNext();
   };
 
+  // Hosted (http) panel image URLs only — safe to sync with the story so EVERY viewer sees the art.
+  // Skips data: URIs (device-local, too large to embed in the DB row).
+  const publicPanelImages = () => Object.fromEntries(
+    Object.entries(panelImages).filter(([, v]) => typeof v === "string" && v.startsWith("http"))
+  );
+
   // Persist generated panel images under a story id so the reader can show them later
   const persistPanels = (id, images = panelImages) => {
     if (!id || !Object.keys(images).length) return;
@@ -517,21 +824,81 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
     } catch {}
   };
 
+  // Reopen a saved draft to keep working on it — restores script, character, cover, voices,
+  // its saved panel images, AND its id/status so the next Save UPDATES it instead of duplicating.
+  const loadDraft = (s) => {
+    setStory({ ...s, support_characters: s.support_characters || s.script?.support_characters || [] });
+    setScript(s.script || null);
+    // Restore the art style so Redo/regenerate uses the SAME model + prompt the story was made with
+    // (else a JP-EN manga gets re-drawn as the default style — wrong look and the no-text path skipped).
+    if (s.script?.art_style) setStyle(s.script.art_style);
+    else if (s.script?.mono) setStyle("JP-EN");
+    if (s.script?.thought_style) setThoughtStyle(s.script.thought_style);
+    setCb(s.character_brief || null);
+    setCoverArt(s.cover_art || s.script?.cover_art || null);
+    setVoices(s.voices || null);
+    setEditingId(s.id || null);
+    setEditStatus(s.status || null);
+    // Load saved panel art: the story's PUBLISHED/committed copy in the DB (script.panel_images) is the
+    // source of truth and WINS, so opening a story shows the saved version — not stray local regens that
+    // were never published. localStorage only fills panels the DB doesn't have (unpublished drafts).
+    try {
+      const local = JSON.parse(localStorage.getItem(`mv_panels_${s.id}`) || "null");
+      const fromDB = s.script?.panel_images || {};
+      setPanelImages({ ...(local && typeof local === "object" ? local : {}), ...fromDB });
+    } catch { setPanelImages(s.script?.panel_images || {}); }
+    setStep("story");
+    setTab(s.script?.panels?.length ? "reader" : "concept");
+  };
+
   const save = async () => {
     if (!user) { onRequestAuth(); return; }
-    const s = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle} : script, character_brief:cb, voices, status:"draft", author_name:user.username});
+    if (chapterNum > 1) { const ok = await persistChapterN("draft"); setToast({ msg: ok ? `Chapter ${chapterNum} draft saved ✓` : "Chapter save failed", type: ok ? "ok" : "err" }); return; }
+    const s = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: publicPanelImages()} : script, character_brief:cb, cover_art:coverArt, voices, status:"draft", author_name:user.username});
     setStory(prev => ({...prev, id:s.id}));
     setEditingId(s.id); setEditStatus("draft");
     persistPanels(s.id);
     setToast({msg: editStatus==="published" ? "Saved as draft — unpublished until you update live" : "Draft saved ✓", type:"ok"});
   };
 
+  // Cloud auto-save: quietly persist DRAFTS to the creator's account as they work, so nothing is ever
+  // lost and every demo creation is in Supabase ready to publish at launch. Never auto-touches a
+  // published story (that needs an explicit Update-live), never runs mid-generation, and skips no-op
+  // re-saves. Same record each time (via story.id), so no duplicates.
+  const autoSave = async () => {
+    if (!user || !story) return;
+    const pub = publicPanelImages();
+    const sig = JSON.stringify({ ch: chapterNum, t: story.title, pc: script?.panels?.length || 0, pi: Object.keys(pub).length, cb: !!cb, v: !!voices, cov: !!coverArt });
+    if (sig === lastSavedSigRef.current) return;
+    try {
+      // Chapter 2+ auto-saves to the chapters table (as a draft) even if the STORY is published — the
+      // chapter has its own status, so writing a new chapter never unpublishes the series.
+      if (chapterNum > 1) { const ok = await persistChapterN("draft"); if (ok) lastSavedSigRef.current = sig; return; }
+      if (editStatus === "published") return; // Ch.1 of a published story: don't auto-unpublish (needs Update-live)
+      const s = await onSave({ ...story, script: script ? { ...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: pub } : script, character_brief: cb, cover_art: coverArt, voices, status: "draft", author_name: user.username });
+      if (s?.id) { if (!editingId) setEditingId(s.id); if (!story.id) setStory(prev => prev ? { ...prev, id: s.id } : prev); persistPanels(s.id); }
+      lastSavedSigRef.current = sig;
+    } catch (e) { console.warn("auto-save:", e.message); }
+  };
+
+  useEffect(() => {
+    if (!user || !story) return;
+    if (chapterNum === 1 && editStatus === "published") return; // Ch.1 of a published story: manual Update-live only
+    if (loading || panelsLoading || transLoading || agentStep || regenPanel || scriptProgress || chapterBusy) return; // never mid-generation
+    clearTimeout(autoSaveRef.current);
+    autoSaveRef.current = setTimeout(autoSave, 5000);
+    return () => clearTimeout(autoSaveRef.current);
+  }, [story, script, cb, voices, coverArt, panelImages, user, editStatus, chapterNum, chapterBusy, loading, panelsLoading, transLoading, agentStep, regenPanel, scriptProgress]);
+
   // Save edits straight to the live published chapter (same record, live immediately)
   const updateLive = async () => {
     if (!user) { onRequestAuth(); return; }
+    if (chapterNum > 1) { setPub(true); try { const ok = await persistChapterN("published"); setToast({ msg: ok ? `Chapter ${chapterNum} updated live ✓` : "Update failed", type: ok ? "ok" : "err" }); } finally { setPub(false); } return; }
+    if (script?.panels?.length && !Object.keys(publicPanelImages()).length &&
+        !window.confirm("This chapter has no saved panel art yet, so readers on other devices will see empty panels.\n\nGenerate panels first — update live anyway?")) return;
     setPub(true);
     try {
-      const saved = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle} : script, character_brief:cb, voices, status:"published", author_name:user?.username||story.author_name||"Anonymous", updated_at:new Date().toISOString()});
+      const saved = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: publicPanelImages()} : script, character_brief:cb, cover_art:coverArt, voices, status:"published", author_name:user?.username||story.author_name||"Anonymous", updated_at:new Date().toISOString()});
       persistPanels(saved?.id);
       setStory(prev => ({...prev, id:saved.id}));
       setEditingId(saved.id); setEditStatus("published");
@@ -540,18 +907,222 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
     finally { setPub(false); }
   };
 
+  // Pre-generate the chapter's translations for the chosen languages at publish time, so every reader
+  // gets them INSTANTLY (no live translate call). Batched 12 panels/call like the reader; returns
+  // { [lang]: {language, chapter_title, panels:[…]} } saved to the separate translations store.
+  const pregenerateTranslations = async (langs) => {
+    const out = {};
+    if (!TRANSLATION_ENABLED) return out; // demo: English only — skip all pre-translation to save tokens
+    if (!langs?.length || !script?.panels?.length) return out;
+    // Already-stored languages are refreshed, not skipped: only panels whose dialogue changed since
+    // they were translated get re-translated (redrawn/edited panels), so re-publishing stays cheap
+    // but never ships a stale translation.
+    const sid = editingId || story?.id;
+    let existing = [];
+    if (sid) { try { existing = await fetchTranslatedLangs(sid); } catch {} }
+    // Cap how many languages one publish pre-translates (mirror of api/_pricing.js LIMITS).
+    const todo = langs.filter(l => l !== "English").slice(0, MAX_LANGS_PER_PUBLISH);
+    for (let li = 0; li < todo.length; li++) {
+      const lang = todo[li];
+      try {
+        const prev = existing.includes(lang) && sid ? await fetchTranslation(sid, lang) : null;
+        const data = await translateUpdated(script, lang, voices, story, prev,
+          (d, t) => setPubProgress(`Translating to ${lang}… (${li + 1}/${todo.length}) · ${d}/${t}`));
+        // Only ship what actually changed — skip re-saving a language that's already current.
+        if (data && data._updated !== 0) out[lang] = data;
+      } catch (e) { console.warn(`Pre-translate ${lang} failed:`, e.message); }
+    }
+    setPubProgress("");
+    return out;
+  };
+
   const publish = async (langs) => {
+    // Don't let a chapter ship with panels but no hosted art — readers would see blanks.
+    if (script?.panels?.length && !Object.keys(publicPanelImages()).length &&
+        !window.confirm("This chapter has no saved panel art yet, so readers on other devices will see empty panels.\n\nGenerate panels first for the full experience — publish anyway?")) return;
+    // Chapter 2+ publishes to the chapters table (its own row), not the story record.
+    if (chapterNum > 1) {
+      setPub(true);
+      try { const ok = await persistChapterN("published"); if (ok) { setShowPub(false); setToast({ msg: `Chapter ${chapterNum} is live 🎉`, type: "ok" }); onPublished?.(story); } else setToast({ msg: "Publish failed", type: "err" }); }
+      finally { setPub(false); }
+      return;
+    }
     setPub(true);
     try {
-      const saved = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle} : script, character_brief:cb, voices, status:"published", author_name:user?.username||"Anonymous", langs:1+langs.length, published_at:new Date().toISOString()});
+      const translations = await pregenerateTranslations(langs);
+      const saved = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: publicPanelImages()} : script, character_brief:cb, cover_art:coverArt, voices, status:"published", author_name:user?.username||"Anonymous", langs:1+langs.length, published_at:new Date().toISOString()});
+      // Store translations in their OWN table (keyed by the saved story id) — never in the story record.
+      if (Object.keys(translations).length) { try { await onSaveTranslations?.(saved.id, translations); } catch(e){ console.warn("save translations:", e.message); } }
       persistPanels(saved?.id);
       setStory(prev => ({...prev, id:saved.id}));
       setEditingId(saved.id); setEditStatus("published");
       setShowPub(false);
-      setToast({msg:`"${story.title}" is live in the library 🎉`,type:"ok"});
+      setToast({msg:`"${story.title}" is live on the homepage 🎉`,type:"ok"});
+      onPublished?.(saved);   // take the creator to the homepage to see it live
     } catch(e){ setToast({msg:"Publish failed: "+e.message,type:"err"}); }
     finally{ setPub(false); }
   };
+
+  // ── Multi-chapter series ──────────────────────────────────────────────────────
+  // The current chapter's full script payload (script + panel art + presentation meta), shared by every
+  // save path so Chapter 1 (story record) and Chapter 2+ (chapters table) store the exact same shape.
+  const chapterScript = () => script ? { ...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: publicPanelImages() } : script;
+
+  // Save the CURRENT chapter when it's 2+ (Chapter 1 always flows through the story record via save/publish).
+  // Bumps the story's `chapters` count so the reader knows how many exist. Returns true on success.
+  const persistChapterN = async (status) => {
+    const sid = editingId || story?.id;
+    if (!sid) { setToast({ msg: "Save the story once before adding chapters.", type: "warn" }); return false; }
+    const ok = await onSaveChapter?.(sid, chapterNum, chapterScript(), status);
+    // Chapter 2+ art lives in the chapters table (inside script.panel_images) — that's the durable copy.
+    const newCount = Math.max(chapterCount, chapterNum);
+    if (newCount !== (story?.chapters || 1)) {
+      setChapterCount(newCount);
+      try { await onSave({ ...story, id: sid, chapters: newCount, author_name: user?.username || story?.author_name || "Anonymous" }); } catch {}
+    }
+    return ok !== false;
+  };
+
+  // Load a chapter into the editor. Ch.1 = the story record's script; Ch.n = the chapters table.
+  const switchChapter = async (n) => {
+    if (n === chapterNum) return;
+    setChapterBusy(true);
+    try {
+      if (n === 1) {
+        setScript(story?.script || null);
+        try { const ls = localStorage.getItem(`mv_panels_${editingId||story?.id}`); setPanelImages(ls ? JSON.parse(ls) : (story?.script?.panel_images || {})); } catch { setPanelImages(story?.script?.panel_images || {}); }
+      } else {
+        const row = await fetchChapter(editingId || story?.id, n);
+        if (row?.script) { setScript(row.script); setPanelImages(row.script.panel_images || {}); }
+        else { setScript(null); setPanelImages({}); }
+      }
+      setChapterNum(n);
+      setTab("reader");
+    } finally { setChapterBusy(false); }
+  };
+
+  // Delete the LATEST chapter (2+) — removes its row, drops the story's count, and returns to the
+  // previous chapter. Chapter 1 can't be deleted (it IS the story). Fixes an unwanted/phantom chapter.
+  const deleteChapterN = async () => {
+    const sid = editingId || story?.id;
+    const del = chapterCount;
+    if (!sid || del <= 1) return;
+    if (!window.confirm(`Delete Chapter ${del}? This can't be undone.`)) return;
+    setChapterBusy(true);
+    try {
+      await onDeleteChapter?.(sid, del);
+      const target = del - 1; // the now-latest remaining chapter
+      if (target === 1) {
+        setScript(story?.script || null);
+        try { const ls = localStorage.getItem(`mv_panels_${sid}`); setPanelImages(ls ? JSON.parse(ls) : (story?.script?.panel_images || {})); }
+        catch { setPanelImages(story?.script?.panel_images || {}); }
+      } else {
+        const row = await fetchChapter(sid, target);
+        if (row?.script) { setScript(row.script); setPanelImages(row.script.panel_images || {}); }
+      }
+      setChapterNum(target);
+      setChapterCount(target);
+      try { await onSave?.({ ...story, id: sid, chapters: target, author_name: user?.username || story?.author_name || "Anonymous" }); } catch {}
+      setTab("reader");
+      setToast({ msg: `Chapter ${del} deleted — you're back on Chapter ${target}.`, type: "ok" });
+    } catch (e) { setToast({ msg: "Couldn't delete the chapter — try again.", type: "err" }); }
+    finally { setChapterBusy(false); }
+  };
+
+  // Generate the NEXT chapter, continuing the series from the chapter currently open.
+  const genChapter = async (direction = "") => {
+    if (!requireAuth()) return;
+    if (!story || !script?.panels?.length) { setToast({ msg: "Finish this chapter first, then add the next one.", type: "warn" }); return; }
+    if (!RELEASE_MODE && chapterCount >= DEMO_MAX_CHAPTERS) { setToast({ msg: `Demo limit: ${DEMO_MAX_CHAPTERS} chapters per story. Full access opens at launch.`, type: "warn" }); return; }
+    const N = chapterCount + 1;
+    if (!window.confirm(`Start Chapter ${N}? It creates a new chapter continuing from Chapter ${chapterNum}.`)) return;
+    const prevRecap = `Chapter ${chapterNum}: ${script.chapter_summary || script.chapter_title || ""}. It ended on: ${script.chapter_end_hook || "an open cliffhanger."}`
+      + (direction ? `\nThe creator wants THIS chapter to go in this direction: ${direction}` : "");
+    setChapterBusy(true); setTab("script"); setScriptProgress(`Writing Chapter ${N}…`); setStream("");
+    try {
+      const BATCH = 6;
+      const batches = Math.ceil(panelCount / BATCH);
+      let allPanels = [], title = "", summary = "", endHook = "", recap = prevRecap;
+      for (let b = 0; b < batches; b++) {
+        const start = b * BATCH + 1, end = Math.min(start + BATCH - 1, panelCount);
+        setScriptProgress(`Writing Chapter ${N} — panels ${start}-${end}…`);
+        if (b === 0) {
+          const r = await askClaude(P_CHAPTER(story, N, end - start + 1, prevRecap, useNarrator, demographic, bibleText()), t => setStream(t), 2, "script");
+          if (!r) { setToast({ msg: "Chapter generation failed — try again.", type: "err" }); return; }
+          title = r.chapter_title || `Chapter ${N}`; summary = r.chapter_summary || ""; endHook = r.chapter_end_hook || "";
+          allPanels = r.panels || [];
+        } else {
+          let raw = null;
+          for (let a = 0; a < 3 && !raw; a++) { if (a) await new Promise(r => setTimeout(r, 1500 * a)); raw = await askClaude(P_SCRIPT_BATCH(story, start, end, panelCount, recap, useNarrator, demographic), t => setStream(t), 2, "script"); }
+          if (!raw) { setToast({ msg: `Chapter ${N} saved up to panel ${allPanels.length} — hit ↻ to finish.`, type: "warn" }); break; }
+          allPanels = [...allPanels, ...(Array.isArray(raw) ? raw : raw.panels || [])];
+          if (raw.chapter_end_hook) endHook = raw.chapter_end_hook;
+        }
+        recap = allPanels.slice(-5).map(p => `[${p.number}] ${(p.scene||"").slice(0,110)}`).join(" ");
+      }
+      if (!allPanels.length) return;
+      onUseCredits?.(5);
+      setChapterCount(N); setChapterNum(N);
+      setPanelImages({}); // fresh chapter — no art yet
+      const built = { chapter_title: title, chapter_summary: summary, panels: stripNarration(allPanels), chapter_end_hook: endHook };
+      setScript(built);
+      setEditMode(false);
+      updateBible(N, built); // grow the Story Brain (non-blocking)
+      setToast({ msg: `Chapter ${N} written — generate panels, then publish it.`, type: "ok" });
+    } catch (e) { setToast({ msg: "Chapter generation failed: " + e.message, type: "err" }); }
+    finally { setChapterBusy(false); setScriptProgress(""); }
+  };
+
+  // ── Story Brain (the living bible) ────────────────────────────────────────────
+  // Compact, unresolved-thread-focused bible → context for writing the next chapter (keeps continuity).
+  const bibleText = () => bible ? JSON.stringify({
+    characters: bible.characters, world_rules: bible.world_rules,
+    plot_threads: (bible.plot_threads || []).filter(t => t.status !== "resolved"),
+    open_hooks: bible.open_hooks, running_recap: bible.running_recap,
+  }).slice(0, 4000) : "";
+
+  // Pure merge: fold one chapter into a bible object and return the new bible (no state/save).
+  const mergeChapter = async (prevBible, chapterNumber, scriptObj) => {
+    if (!scriptObj?.panels?.length) return prevBible;
+    const digest = `Ch${chapterNumber} "${scriptObj.chapter_title || ""}": ${scriptObj.chapter_summary || ""}. Ends on: ${scriptObj.chapter_end_hook || ""}. Scenes: ${scriptObj.panels.slice(0, 60).map(p => { const line = (p.dialogue || []).find(d => d.text)?.text; return (p.scene || "").slice(0, 80) + (line ? ` — "${line}"` : ""); }).join(" | ")}`.slice(0, 6000);
+    const merged = await askClaude(P_BIBLE_UPDATE(story, prevBible, chapterNumber, digest), () => {}, 2, "brain");
+    return (merged && (merged.characters || merged.running_recap)) ? merged : prevBible;
+  };
+
+  // Merge the just-written chapter into the bible (best-effort, non-blocking, free — action 'brain').
+  const updateBible = async (chapterNumber, scriptObj) => {
+    const sid = editingId || story?.id;
+    if (!sid || !scriptObj?.panels?.length) return;
+    setBibleBusy(true);
+    try {
+      const merged = await mergeChapter(bible, chapterNumber, scriptObj);
+      if (merged && merged !== bible) { setBible(merged); await onSaveBible?.(sid, merged, {}); }
+    } catch (e) { console.warn("bible update:", e.message); }
+    finally { setBibleBusy(false); }
+  };
+
+  // Backfill/rebuild the whole Story Brain by reading EVERY existing chapter in order (Ch.1 from the
+  // story record, Ch.2+ from the chapters table). Lets stories made before the brain get one.
+  const backfillBible = async () => {
+    const sid = editingId || story?.id;
+    if (!sid) return;
+    setBibleBusy(true);
+    try {
+      let acc = null; // rebuild from scratch so it reflects the current chapters exactly
+      if (story?.script?.panels?.length) acc = await mergeChapter(acc, 1, story.script);
+      for (let n = 2; n <= chapterCount; n++) {
+        const row = await fetchChapter(sid, n);
+        if (row?.script?.panels?.length) acc = await mergeChapter(acc, n, row.script);
+      }
+      if (acc) { setBible(acc); await onSaveBible?.(sid, acc, {}); }
+      else setToast({ msg: "No chapters to read yet — write a chapter first.", type: "warn" });
+    } catch (e) { console.warn("backfill bible:", e.message); }
+    finally { setBibleBusy(false); }
+  };
+
+  // The Story Brain is NO LONGER auto-built on opening the tab — that fired a Claude call (token spend)
+  // without the user asking. The tab shows a "↻ Rebuild from all chapters" button + an empty state that
+  // prompts the user to click it, so the brain is only built on demand.
 
   const STYLE_OPTIONS = [
     {id:"PRISMA", flag:"✦",  label:"Prisma",   sub:"Our house format · full-color webtoon"},
@@ -559,9 +1130,6 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
     {id:"KR-EN", flag:"🇰🇷", label:"Manhwa",   sub:"Korean style · English"},
     {id:"CN-EN", flag:"🇨🇳", label:"Manhua",   sub:"Chinese style · English"},
     {id:"US-EN", flag:"🇺🇸", label:"Comics",   sub:"American style · English"},
-    {id:"JP-ES", flag:"🇪🇸", label:"Manga ES",  sub:"Japanese style · Spanish"},
-    {id:"JP-FR", flag:"🇫🇷", label:"Manga FR",  sub:"Japanese style · French"},
-    {id:"JP-KR", flag:"🇰🇷", label:"Manga KR",  sub:"Japanese style · Korean"},
     {id:"GL-EN", flag:"🌍",  label:"Global",   sub:"Mixed style · English"},
   ];
 
@@ -750,14 +1318,20 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
         {[
-          {label:"Genre",opts:["Shonen action","Murim martial arts","Isekai portal","Reincarnation","Cultivation xianxia","Dungeon system","Regression","Dark fantasy","Romantic comedy","Ecchi romcom","Psychological thriller","Slice of life","Sci-fi","Historical","Horror","Sports"],val:genre,set:setGenre},
+          {label:"Genre",multi:true,opts:["Shonen action","Murim martial arts","Isekai portal","Reincarnation","Cultivation xianxia","Dungeon system","Regression","Dark fantasy","Romantic comedy","Ecchi romcom","Psychological thriller","Slice of life","Sci-fi","Historical","Horror","Sports"],val:genre,set:setGenre},
           {label:"Tone",opts:["Epic & grand","Gritty & intense","Light & fun","Emotional & bittersweet","Mysterious","Hopeful","Dark & complex","Comedic"],val:tone,set:setTone},
           {label:"Audience",opts:["Shōnen","Shōjo","Seinen","Josei","Kodomo"],val:demographic,set:setDemographic}
-        ].map(({label,opts,val,set})=>(
+        ].map(({label,opts,val,set,multi})=>(
           <div key={label}>
-            <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:7}}>{label}</div>
+            <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:7}}>{label}{multi&&<span style={{textTransform:"none",letterSpacing:0,opacity:0.7}}> · pick one or more</span>}</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-              {opts.map(o=><button key={o} onClick={()=>set(o)} style={{fontSize:11,padding:"4px 10px",borderRadius:7,border:`0.5px solid ${val===o?C.purple:C.border}`,background:val===o?C.purple+"22":"transparent",color:val===o?C.purpleL:C.muted,cursor:"pointer",fontFamily:"inherit"}}>{o}</button>)}
+              {opts.map(o=>{
+                const sel = multi ? (val||"").split(" + ").map(x=>x.trim()).filter(Boolean).includes(o) : val===o;
+                const handle = multi
+                  ? ()=>{ const cur=(val||"").split(" + ").map(x=>x.trim()).filter(Boolean); set((cur.includes(o)?cur.filter(x=>x!==o):[...cur,o]).join(" + ")); }
+                  : ()=>set(o);
+                return <button key={o} onClick={handle} style={{fontSize:11,padding:"4px 10px",borderRadius:7,border:`0.5px solid ${sel?C.purple:C.border}`,background:sel?C.purple+"22":"transparent",color:sel?C.purpleL:C.muted,cursor:"pointer",fontFamily:"inherit"}}>{o}</button>;
+              })}
             </div>
           </div>
         ))}
@@ -767,7 +1341,7 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
 
       {drafts.length>0&&<div style={{marginTop:22}}>
         <div style={{fontSize:11,color:C.muted,marginBottom:8}}>Your drafts</div>
-        {drafts.map(s=><div key={s.id} onClick={()=>{setStory(s);setScript(s.script||null);setCb(s.character_brief||null);setStep("story");setTab("concept");}} style={{padding:"10px 14px",border:`0.5px solid ${C.border}`,borderRadius:9,cursor:"pointer",background:C.card,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}} onMouseEnter={e=>e.currentTarget.style.borderColor=C.purple} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+        {drafts.map(s=><div key={s.id} onClick={()=>loadDraft(s)} style={{padding:"10px 14px",border:`0.5px solid ${C.border}`,borderRadius:9,cursor:"pointer",background:C.card,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}} onMouseEnter={e=>e.currentTarget.style.borderColor=C.purple} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
           <div><div style={{fontSize:13,fontWeight:500,color:C.text}}>{s.title}</div><div style={{fontSize:11,color:C.muted}}>{s.tagline}</div></div>
           <Tag c={C.gold}>Draft</Tag>
         </div>)}
@@ -835,7 +1409,8 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
     ...(!cb && !loading ? [{id:"gc", label:"✦ Design character", fn:genChar}] : []),
     ...(voices  ? [{id:"voices",  label:"🎭 Voices"}]  : []),
     ...(!voices && script && !loading ? [{id:"gv", label:"✦ Voice profiles", fn:genVoices}] : []),
-    ...(script  ? [{id:"translate", label:"🌐 Translate"}] : []),
+    ...(script && TRANSLATION_ENABLED ? [{id:"translate", label:"🌐 Translate"}] : []),
+    ...(script ? [{id:"brain", label:"🧠 Story Brain"}] : []),
     ...(Object.keys(panelImages).length > 0 ? [{id:"reader", label:"📖 Read"}] : []),
     ...(script && !panelsLoading && Object.keys(panelImages).length === 0 ? [{id:"gp", label:"🎨 Generate panels", fn:genPanels}] : []),
     ...(panelsLoading ? [{id:"gp", label:`🎨 Generating… ${panelProgress}%`}] : []),
@@ -844,11 +1419,19 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
   return (
     <div style={{animation:"fadeUp .2s ease"}}>
       {toast&&<Toast msg={toast.msg} type={toast.type} onDone={()=>setToast(null)}/>}
-      {showPub&&<PublishModal story={story} onPublish={publish} onClose={()=>setShowPub(false)} saving={publishing}/>}
+      {showPub&&<PublishModal story={story} onPublish={publish} onClose={()=>setShowPub(false)} saving={publishing} progress={pubProgress}/>}
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:16,gap:12}}>
         <div style={{minWidth:0}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <div style={{fontSize:20,fontWeight:700,fontFamily:"'Cinzel',serif",marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{story?.title}</div>
+            {script && (chapterCount>1 ? (
+              <select value={chapterNum} onChange={e=>switchChapter(Number(e.target.value))} disabled={chapterBusy||panelsLoading} title="Switch chapter"
+                style={{fontSize:12,fontWeight:600,padding:"3px 8px",borderRadius:7,border:`0.5px solid ${C.purple}`,background:C.purple+"14",color:C.purple,fontFamily:"inherit",cursor:"pointer"}}>
+                {Array.from({length:chapterCount},(_,i)=>i+1).map(n=><option key={n} value={n}>📖 Chapter {n} of {chapterCount}</option>)}
+              </select>
+            ) : (
+              <Tag c={C.purple}>📖 Chapter {chapterNum}</Tag>
+            ))}
             {editingId && <Tag c={editStatus==="published"?C.teal:C.gold}>{editStatus==="published"?"● Editing live":"Editing draft"}</Tag>}
           </div>
           <div style={{fontSize:13,color:C.muted,fontStyle:"italic"}}>{story?.tagline}</div>
@@ -863,7 +1446,7 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
             </>
           ) : (
             <>
-              <Btn v="teal" onClick={save}>✓ Save</Btn>
+              <Btn v="teal" onClick={save}>💾 Save draft to library</Btn>
               {user&&<Btn v="pri" onClick={()=>setShowPub(true)}>✦ Publish →</Btn>}
             </>
           )}
@@ -970,6 +1553,10 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
 
       {tab==="script"&&script&&(
         <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:10}}>
+            <span style={{fontSize:11,color:C.muted}}>{script.panels?.length||0} panels{(script.panels?.length||0)<panelCount?` · target ${panelCount}`:""}</span>
+            <Btn onClick={()=>{ if(window.confirm(`Rewrite the whole chapter script from scratch?\n\nThis replaces the current ${script.panels?.length||0} panels with a freshly written ${panelCount}-panel script.`)) genScript(); }} disabled={loading} sx={{whiteSpace:"nowrap"}}>↻ Rewrite script</Btn>
+          </div>
           {editMode&&<div style={{fontSize:11,color:C.gold,marginBottom:10,padding:"6px 10px",background:C.gold+"14",borderRadius:6}}>✎ Editing — tweak scenes, dialogue, and moods. Regenerate panels after editing to redraw them.</div>}
           <div style={{marginBottom:14}}>
             {editMode
@@ -1135,20 +1722,43 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
 
       {tab==="translate"&&(
         <div>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18,padding:"14px 16px",background:C.card,borderRadius:10,border:`0.5px solid ${C.border}`}}>
-            <span style={{fontSize:12,color:C.muted,flexShrink:0}}>Translate to:</span>
-            <div style={{display:"flex",gap:5,flexWrap:"wrap",flex:1}}>
-              {["Spanish","French","German","Portuguese","Arabic","Japanese","Korean","Chinese","Hindi","Italian","Russian","Turkish"].map(lang=>(
-                <button key={lang} onClick={()=>setTransLang(lang)} style={{fontSize:11,padding:"4px 10px",borderRadius:7,border:`0.5px solid ${transLang===lang?C.purple:C.border}`,background:transLang===lang?C.purple+"22":"transparent",color:transLang===lang?C.purpleL:C.muted,cursor:"pointer",fontFamily:"inherit"}}>{lang}</button>
-              ))}
+          <div style={{marginBottom:18,padding:"14px 16px",background:C.card,borderRadius:10,border:`0.5px solid ${C.border}`}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <span style={{fontSize:12,color:C.muted}}>Translate into (pick any number):</span>
+              <button onClick={()=>setTransLangs(transLangs.length>=ALL_TRANS.length?[]:ALL_TRANS)} style={{fontSize:10,padding:"4px 11px",borderRadius:7,border:`0.5px solid ${transLangs.length>=ALL_TRANS.length?C.border2:C.purple}`,background:transLangs.length>=ALL_TRANS.length?"transparent":C.purple+"18",color:transLangs.length>=ALL_TRANS.length?C.muted:C.purpleL,cursor:"pointer",fontFamily:"inherit",fontWeight:500,whiteSpace:"nowrap"}}>
+                {transLangs.length>=ALL_TRANS.length?"Clear all":`Select all ${ALL_TRANS.length}`}
+              </button>
             </div>
-            <Btn v="pri" onClick={genTranslate} disabled={transLoading||!script} sx={{flexShrink:0,whiteSpace:"nowrap"}}>
-              {transLoading?<><Spinner size={13}/>Translating…</>:"🌐 Translate"}
-            </Btn>
+            <div style={{maxHeight:190,overflowY:"auto",paddingRight:4,marginBottom:10}}>
+              {[{region:"✦ Recommended",langs:RECOMMENDED_LANGS,rec:true},...LANG_GROUPS].map(g=>{
+                const opts=g.langs.filter(l=>l!=="English");
+                if(!opts.length) return null;
+                return (
+                  <div key={g.region} style={{marginBottom:9}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
+                      <div style={{fontSize:9,color:g.rec?C.purpleL:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:g.rec?700:400,opacity:g.rec?1:0.8}}>{g.region}</div>
+                      {g.rec && <button onClick={()=>setTransLangs(p=>[...new Set([...p,...RECOMMENDED_LANGS])])} style={{fontSize:9,padding:"2px 8px",borderRadius:6,border:`0.5px solid ${C.purple}`,background:C.purple+"18",color:C.purpleL,cursor:"pointer",fontFamily:"inherit"}}>Select these</button>}
+                    </div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      {opts.map(l=>{
+                        const done=storedLangs.includes(l), sel=transLangs.includes(l);
+                        return <button key={l} onClick={()=>togTrans(l)} title={done?"Already translated & saved — will be skipped":""} style={{fontSize:11,padding:"4px 10px",borderRadius:7,border:`0.5px solid ${done?C.teal:sel?C.purple:C.border}`,background:done?C.teal+"1e":sel?C.purple+"22":"transparent",color:done?C.teal:sel?C.purpleL:C.muted,cursor:"pointer",fontFamily:"inherit"}}>{done?"✓ ":""}{l}</button>;
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{flex:1,fontSize:11,color:C.muted}}>{transLangs.length} selected{transLangs.length>=12?" · this will take a few minutes":""}</span>
+              <Btn v="pri" onClick={genTranslate} disabled={transLoading||!script||!transLangs.length} sx={{flexShrink:0,whiteSpace:"nowrap"}}>
+                {transLoading?<><Spinner size={13}/>{transProgress||"Translating…"}</>:`🌐 Translate ${transLangs.length||""}`.trim()}
+              </Btn>
+            </div>
           </div>
-          {voices && <div style={{fontSize:11,color:C.teal,marginBottom:12,padding:"7px 12px",background:C.teal+"10",borderRadius:6}}>✓ Voice profiles active — each character will sound unique in {transLang}</div>}
+          {voices && <div style={{fontSize:11,color:C.teal,marginBottom:12,padding:"7px 12px",background:C.teal+"10",borderRadius:6}}>✓ Voice profiles active — each character keeps a unique voice in every language</div>}
           {!voices && <div style={{fontSize:11,color:C.gold,marginBottom:12,padding:"7px 12px",background:C.gold+"10",borderRadius:6}}>⚡ Tip: Generate voice profiles first for better character-specific translations</div>}
-          {transLoading && <div style={{display:"flex",alignItems:"center",gap:10,padding:"20px 0"}}><Spinner/><span style={{color:C.muted,fontSize:13}}>Translating with character voices…</span></div>}
+          {transLoading && <div style={{display:"flex",alignItems:"center",gap:10,padding:"20px 0"}}><Spinner/><span style={{color:C.muted,fontSize:13}}>{transProgress||"Translating with character voices…"}</span></div>}
           {translation && (
             <div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
@@ -1211,89 +1821,175 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
         </div>
       )}
 
+      {tab==="brain" && (
+        <div style={{maxWidth:640,margin:"0 auto"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+            <div>
+              <div style={{fontSize:16,fontWeight:700,fontFamily:"'Cinzel',serif",color:C.text}}>🧠 Story Brain</div>
+              <div style={{fontSize:11,color:C.muted}}>{story?.title} · grows with every chapter</div>
+            </div>
+            <Btn onClick={backfillBible} disabled={bibleBusy||!script?.panels?.length} sx={{fontSize:11}}>{bibleBusy?<><Spinner size={12}/> Reading chapters…</>:"↻ Rebuild from all chapters"}</Btn>
+          </div>
+          {bibleBusy && !bible ? (
+            <div style={{padding:24,background:C.card,border:`0.5px solid ${C.border}`,borderRadius:12,color:C.muted,fontSize:13,textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}><Spinner size={16}/> Reading this story's chapters and building its brain…</div>
+          ) : !bible ? (
+            <div style={{padding:24,background:C.card,border:`0.5px dashed ${C.border2}`,borderRadius:12,color:C.muted,fontSize:13,textAlign:"center",lineHeight:1.6}}>
+              Your Story Brain reads every chapter you've written — remembering characters, plot threads, and open questions, and suggesting where to take the story next. {script?.panels?.length ? "Click ↻ Rebuild from all chapters to build it now." : "Write a chapter to begin."}
+            </div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              {bible.running_recap && <div style={{padding:"12px 14px",background:C.purple+"10",border:`0.5px solid ${C.purple}33`,borderRadius:10}}><div style={{fontSize:10,color:C.purpleL,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Where the story stands</div><div style={{fontSize:13,color:C.text,lineHeight:1.6}}>{bible.running_recap}</div></div>}
+              {bible.next_directions?.length>0 && <div>
+                <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Where to take it next</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {bible.next_directions.map((d,i)=>(
+                    <div key={i} style={{padding:"10px 12px",background:C.card,border:`0.5px solid ${C.border}`,borderRadius:9,display:"flex",gap:10,alignItems:"center"}}>
+                      <div style={{flex:1}}><div style={{fontSize:12.5,fontWeight:600,color:C.text}}>{d.title}</div><div style={{fontSize:11.5,color:C.muted,lineHeight:1.5,marginTop:2}}>{d.pitch}</div></div>
+                      {chapterNum===chapterCount && <Btn v="pri" onClick={()=>genChapter(`${d.title}: ${d.pitch}`)} disabled={chapterBusy} sx={{fontSize:11,whiteSpace:"nowrap"}}>✍ Write Ch. {chapterCount+1}</Btn>}
+                    </div>
+                  ))}
+                </div>
+              </div>}
+              {bible.characters?.length>0 && <Sec title="Characters" accent={C.purple}><div style={{display:"flex",flexDirection:"column",gap:6}}>{bible.characters.map((c,i)=>(<div key={i} style={{padding:"7px 10px",background:C.card,borderRadius:8,border:`0.5px solid ${C.border}`}}><div style={{fontSize:12,fontWeight:600,color:C.text}}>{c.name} <span style={{fontSize:10,color:C.muted,fontWeight:400}}>· {c.role}{c.status?` · ${c.status}`:""}</span></div>{c.notes&&<div style={{fontSize:11,color:C.muted,marginTop:2,lineHeight:1.5}}>{c.notes}</div>}</div>))}</div></Sec>}
+              {bible.plot_threads?.length>0 && <Sec title="Plot threads" accent={C.teal}><div style={{display:"flex",flexDirection:"column",gap:5}}>{bible.plot_threads.map((t,i)=>(<div key={i} style={{fontSize:12,color:C.text,display:"flex",gap:8,alignItems:"baseline"}}><span style={{fontSize:9,color:t.status==="resolved"?C.teal:C.gold,textTransform:"uppercase",flexShrink:0,width:58}}>{t.status||"open"}</span><span style={{flex:1,lineHeight:1.5}}>{t.thread}{t.notes?` — ${t.notes}`:""}</span></div>))}</div></Sec>}
+              {bible.open_hooks?.length>0 && <Sec title="Open questions" accent={C.gold}><ul style={{margin:0,paddingLeft:18}}>{bible.open_hooks.map((h,i)=><li key={i} style={{fontSize:12,color:C.text,lineHeight:1.6}}>{h}</li>)}</ul></Sec>}
+              {bible.world_rules?.length>0 && <Sec title="World rules" accent={C.pink}><ul style={{margin:0,paddingLeft:18}}>{bible.world_rules.map((w,i)=><li key={i} style={{fontSize:12,color:C.text,lineHeight:1.6}}>{w}</li>)}</ul></Sec>}
+              {bible.timeline?.length>0 && <Sec title="Timeline" accent={C.muted}><div style={{display:"flex",flexDirection:"column",gap:4}}>{bible.timeline.map((t,i)=><div key={i} style={{fontSize:12,color:C.muted,lineHeight:1.5}}>{t}</div>)}</div></Sec>}
+            </div>
+          )}
+        </div>
+      )}
+
       {tab==="reader" && script?.panels?.length > 0 && (
         <div style={{maxWidth:600,margin:"0 auto"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
             <div>
-              <div style={{fontSize:15,fontWeight:600,color:C.text}}>{script?.chapter_title || "Chapter 1"}</div>
-              <div style={{fontSize:11,color:C.muted}}>{story?.title} · {script?.panels?.length || 0} panels</div>
+              <div style={{fontSize:15,fontWeight:600,color:C.text}}>{script?.chapter_title || `Chapter ${chapterNum}`}</div>
+              <div style={{fontSize:11,color:C.muted}}>{story?.title} · Chapter {chapterNum}{chapterCount>1?` of ${chapterCount}`:""} · {script?.panels?.length || 0} panels</div>
             </div>
-            <div style={{display:"flex",gap:8}}>
-              {panelsLoading && <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:C.muted}}><Spinner size={13}/>{scriptProgress || `Generating… ${panelProgress}%`}</div>}
-              <Btn v="soft" onClick={genPanels} disabled={panelsLoading} sx={{fontSize:11}}>🎨 Regenerate</Btn>
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              {(panelsLoading||chapterBusy) && <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:C.muted}}><Spinner size={13}/>{scriptProgress || `Generating… ${panelProgress}%`}</div>}
+              {chapterNum===1 && Object.keys(story?.script?.panel_images||{}).length > 0 && <Btn v="soft" onClick={revertToPublished} disabled={panelsLoading} sx={{fontSize:11}}>↺ Revert to published</Btn>}
+              <Btn v="soft" onClick={genPanels} disabled={panelsLoading||chapterBusy} sx={{fontSize:11}}>🎨 Regenerate</Btn>
+              {chapterCount>1 && <Btn onClick={deleteChapterN} disabled={chapterBusy||panelsLoading} sx={{fontSize:11}}>🗑 Delete Ch. {chapterCount}</Btn>}
+              {chapterNum===chapterCount && <Btn v="pri" onClick={genChapter} disabled={chapterBusy||panelsLoading} sx={{fontSize:11}}>＋ New chapter</Btn>}
             </div>
           </div>
-          <div style={{display:"flex",flexDirection:"column",gap:2,background:"#000",borderRadius:12,overflow:"hidden",border:`0.5px solid ${C.border}`}}>
+          <div style={{display:"flex",flexDirection:"column",gap:0,background:"#e9e9e4",borderRadius:12,overflow:"hidden",border:`0.5px solid ${C.border}`}}>
+            {/* CHAPTER INTRO — title splash + credits header before the story begins */}
+            <div style={{padding:"46px 24px 30px",textAlign:"center",background:"#e9e9e4",borderBottom:"1px solid #d6d6ce"}}>
+              <div style={{fontSize:11,letterSpacing:"0.24em",textTransform:"uppercase",color:"#9a9a90",marginBottom:16}}>{(story?.genre_tags?.[0] || genre || "Prisma")}</div>
+              <div style={{fontFamily:"'Cinzel',serif",fontSize:30,fontWeight:700,color:"#1a1a1a",lineHeight:1.15,marginBottom:12}}>{story?.title || "Untitled"}</div>
+              <div style={{width:44,height:2,background:"#1a1a1a",opacity:0.45,margin:"0 auto 16px"}}/>
+              {/* BONUS non-canon cover art (SBS-style easter egg) */}
+              {coverArt?.url && (
+                <div style={{margin:"6px auto 18px",maxWidth:360}}>
+                  <div style={{border:"3px solid #1a1a1a",borderRadius:2,overflow:"hidden",background:"#fff"}}>
+                    <img src={coverArt.url} alt="Bonus cover" style={{width:"100%",display:"block"}}/>
+                  </div>
+                  {coverArt.caption && <div style={{fontSize:11,color:"#6a6a60",fontStyle:"italic",marginTop:8,lineHeight:1.5,padding:"0 8px"}}>“{coverArt.caption}”</div>}
+                  <div style={{fontSize:9,color:"#b0b0a6",letterSpacing:"0.12em",textTransform:"uppercase",marginTop:5}}>Bonus · not part of the story</div>
+                </div>
+              )}
+              <div style={{fontSize:14,color:"#333",fontWeight:600,marginBottom:6}}>{script?.chapter_title || "Chapter 1"}</div>
+              <div style={{fontSize:11,color:"#8a8a80",lineHeight:1.6}}>Story by {story?.author_name || user?.username || "Anonymous"}<br/>Art · Prisma AI Studio</div>
+            </div>
             {script?.panels?.map((panel) => {
               const img = panelImages[panel.number];
               const dialogue = panel.dialogue || [];
+              const nonSfx = dialogue.filter(d=>d.type!=="sfx");
+              const speechThought = nonSfx.filter(d=>d.type==="speech"||d.type==="thought");
+              const narrLines = nonSfx.filter(d=>d.type==="narration");
+              const shots = spreadShots(panel);           // 2-4 sub-scenes → composite spread
+              const hasArt = !!img || (shots && shots.some((_,si)=>panelImages[`${panel.number}.${si}`]));
+              // Classic manga packs bubbles ONTO the art (no webtoon gutter) — every format except
+              // Prisma/Global. Matches the published reader's classic-layout default.
+              const classicLayout = style !== "GL-EN" && style !== "PRISMA";
+              const big = (isBigPanel(panel) || !!shots || classicLayout) && hasArt; // bubbles ON art only when art exists
               return (
-                <div key={panel.number} style={{position:"relative",background:"#0a0a0a"}}>
-                  {img ? (
-                    <img src={img} alt={`Panel ${panel.number}`} style={{width:"100%",display:"block",imageRendering:"crisp-edges"}}/>
-                  ) : (
-                    (() => {
-                      const moodKey = getMood(panel.mood);
-                      const palette = MOOD_PALETTES[moodKey] || MOOD_PALETTES.default;
-                      const h = {full_page:480,half_page:280,quarter:180,thin_strip:100}[panel.panel_type] || 280;
-                      return (
-                        <div style={{height:h,width:"100%",position:"relative",overflow:"hidden",background:`linear-gradient(160deg, ${palette.bg} 0%, #111 100%)`}}>
-                          <div style={{position:"absolute",inset:0,background:`radial-gradient(ellipse at 50% 40%, ${palette.accent}55 0%, transparent 65%)`}}/>
-                          {moodKey==="action"&&<svg style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:0.07,pointerEvents:"none"}} viewBox="0 0 600 300">{Array.from({length:16},(_,li)=>{const cx=300,cy=150,a=(li/16)*Math.PI*2;return <line key={li} x1={cx} y1={cy} x2={cx+Math.cos(a)*800} y2={cy+Math.sin(a)*800} stroke={palette.accent} strokeWidth="1.5"/>;})}</svg>}
-                          <div style={{position:"absolute",bottom:12,left:14,right:14,fontSize:11,color:"rgba(255,255,255,0.25)",lineHeight:1.4,fontStyle:"italic"}}>{panel.scene?.slice(0,80)}</div>
-                        </div>
-                      );
-                    })()
-                  )}
-                  <div style={{position:"absolute",top:10,left:10,background:"rgba(0,0,0,0.7)",borderRadius:5,padding:"2px 8px",fontSize:10,color:"rgba(255,255,255,0.5)"}}>
-                    {panel.number}
-                  </div>
-                  <button onClick={()=>regenerateOnePanel(panel)} disabled={!!regenPanel}
-                    title="Regenerate this panel"
-                    style={{position:"absolute",top:8,right:8,zIndex:13,background:"rgba(0,0,0,0.72)",border:`1px solid ${C.purple}66`,borderRadius:6,padding:"3px 9px",fontSize:11,color:regenPanel===panel.number?C.muted:"#fff",cursor:regenPanel?"default":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
-                    {regenPanel===panel.number ? <><Spinner size={10}/>Redrawing…</> : "↻ Redo"}
-                  </button>
-                  {/* Caption stack: narration bars, plus inner-voice caption boxes when thoughtStyle="caption" (webtoon/manga) */}
-                  {(dialogue.filter(d=>d.type==="narration").length > 0 || (thoughtStyle==="caption" && dialogue.filter(d=>d.type==="thought").length > 0)) && (
-                    <div style={{position:"absolute",top:0,left:0,right:0,zIndex:12,display:"flex",flexDirection:"column",alignItems:"flex-start",gap:6,padding:"8px 10px 0",pointerEvents:"none"}}>
-                      {dialogue.filter(d=>d.type==="narration").map((d,i)=>(
-                        <div key={"n"+i} style={{alignSelf:"stretch",background:"rgba(0,0,0,0.82)",borderLeft:"3px solid rgba(245,158,11,0.6)",padding:"7px 14px",borderRadius:4}}>
-                          <div style={{fontSize:12,color:"#f5c842",fontStyle:"italic",lineHeight:1.5}}>{d.text}</div>
-                        </div>
-                      ))}
-                      {thoughtStyle==="caption" && dialogue.filter(d=>d.type==="thought").map((d,i)=>(
-                        <div key={"t"+i} style={{maxWidth:"78%",background:"rgba(255,255,255,0.95)",borderLeft:`3px solid ${C.purple}`,borderRadius:5,padding:"7px 13px",boxShadow:"0 3px 10px rgba(0,0,0,0.5)"}}>
-                          <div style={{fontSize:12.5,color:"#141414",fontStyle:"italic",fontWeight:600,lineHeight:1.5}}>{d.text}</div>
-                        </div>
-                      ))}
+                <div key={panel.number} style={{background:"#e9e9e4"}}>
+                  {/* SCENE CUT — divider header when the story jumps to a new place/time */}
+                  {panel.scene_heading && (
+                    <div style={{padding:"30px 24px 12px",display:"flex",alignItems:"center",gap:12,justifyContent:"center"}}>
+                      <div style={{height:1,flex:"0 1 56px",background:"#c3c3ba"}}/>
+                      <div style={{fontSize:11,letterSpacing:"0.14em",textTransform:"uppercase",color:"#7a7a70",fontWeight:600,textAlign:"center"}}>{panel.scene_heading}</div>
+                      <div style={{height:1,flex:"0 1 56px",background:"#c3c3ba"}}/>
                     </div>
                   )}
-                  {dialogue.filter(d=>d.type==="sfx").map((d,i)=>(
-                    <div key={i} style={{position:"absolute",zIndex:11,top:i%2===0?"32%":"64%",left:i%2===0?"58%":"14%",transform:`rotate(${i%2===0?"-6":"4"}deg)`,fontSize:34,fontWeight:900,color:C.pink,fontFamily:"'Cinzel',serif",letterSpacing:"0.06em",textShadow:"2px 2px 0 #000, -1px -1px 0 #000",pointerEvents:"none",WebkitTextStroke:"1px rgba(0,0,0,0.6)"}}>
-                      {d.text}
-                    </div>
-                  ))}
-                  {(() => {
-                    // Spoken lines — plus thoughts as thought-bubbles when thoughtStyle="bubble" (comic style)
-                    const bubbles = dialogue.filter(d=>d.type==="speech" || (thoughtStyle==="bubble" && d.type==="thought"));
-                    const n = bubbles.length;
-                    return bubbles.map((d,i)=>{
-                      const top = n === 1 ? "22%" : `${20 + i * (62 / Math.max(1, n-1))}%`;
-                      const side = i % 2 === 0 ? {left:"7%"} : {right:"7%"};
-                      const isThought = d.type==="thought";
-                      return (
-                        <div key={i} style={{position:"absolute",zIndex:10,top,...side,maxWidth:"44%",pointerEvents:"none"}}>
-                          <div style={{position:"relative"}}>
-                            <div style={{background:isThought?"rgba(255,255,255,0.95)":"rgba(255,255,255,0.97)",border:`1.5px solid ${isThought?"#a78bfa":"rgba(0,0,0,0.18)"}`,borderRadius:isThought?"46%/40%":"18px",padding:"6px 12px",boxShadow:"0 3px 10px rgba(0,0,0,0.55)"}}>
-                              {d.character && <div style={{fontSize:8,fontWeight:700,color:isThought?"#7c3aed":"#666",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:2}}>{isThought?`${d.character} (thinking)`:d.character}</div>}
-                              <div style={{fontSize:12.5,color:"#111",lineHeight:1.45,fontWeight:600,fontStyle:isThought?"italic":"normal"}}>{d.text}</div>
+                  {/* IMAGE — the picture for this beat (or a composite spread of sub-scenes) */}
+                  <div style={{position:"relative",background:"#0a0a0a"}}>
+                    {(shots && hasArt) ? (
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:3,background:"#111"}}>
+                        {shots.map((sc,si)=>{
+                          const sImg = panelImages[`${panel.number}.${si}`];
+                          const palette = MOOD_PALETTES[getMood(panel.mood)] || MOOD_PALETTES.default;
+                          return (
+                            <div key={si} style={{position:"relative",background:"#0a0a0a",minHeight:sImg?undefined:150,...spreadCellSpan(shots.length,si)}}>
+                              {sImg
+                                ? <img src={sImg} alt={`Panel ${panel.number} shot ${si+1}`} style={{width:"100%",height:"100%",objectFit:"cover",display:"block",filter:style==="JP-EN"?"grayscale(1) contrast(1.04)":"none"}}/>
+                                : <div style={{position:"absolute",inset:0,background:`radial-gradient(ellipse at 50% 40%, ${palette.accent}55 0%, transparent 65%)`,display:"flex",alignItems:"flex-end",padding:10}}><div style={{fontSize:10,color:"rgba(255,255,255,0.3)",fontStyle:"italic",lineHeight:1.3}}>{sc.slice(0,60)}</div></div>}
                             </div>
-                            {isThought && <div style={{position:"absolute",bottom:-12,left:16,display:"flex",flexDirection:"column",gap:2}}>{[5,3,2].map((s,ti)=><div key={ti} style={{width:s,height:s,borderRadius:"50%",background:"rgba(255,255,255,0.95)",border:"1px solid #a78bfa"}}/>)}</div>}
+                          );
+                        })}
+                      </div>
+                    ) : img ? (
+                      <img src={img} alt={`Panel ${panel.number}`} style={{width:"100%",display:"block",imageRendering:"crisp-edges",filter:style==="JP-EN"?"grayscale(1) contrast(1.04)":"none"}}/>
+                    ) : (
+                      (() => {
+                        const moodKey = getMood(panel.mood);
+                        const palette = MOOD_PALETTES[moodKey] || MOOD_PALETTES.default;
+                        return (
+                          <div style={{minHeight:200,width:"100%",position:"relative",overflow:"hidden",background:`linear-gradient(160deg, ${palette.bg} 0%, #111 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:"18px"}}>
+                            <div style={{position:"absolute",inset:0,background:`radial-gradient(ellipse at 50% 40%, ${palette.accent}55 0%, transparent 65%)`}}/>
+                            <div style={{position:"relative",textAlign:"center",maxWidth:"80%"}}>
+                              <div style={{fontSize:22,marginBottom:6,opacity:0.5}}>🖼</div>
+                              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",lineHeight:1.4,fontStyle:"italic"}}>{panel.scene?.slice(0,90)}</div>
+                              <div style={{fontSize:10,color:C.purpleL,marginTop:8}}>↻ Use Redo to generate this panel</div>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    });
-                  })()}
+                        );
+                      })()
+                    )}
+                    <div style={{position:"absolute",top:10,left:10,background:"rgba(0,0,0,0.7)",borderRadius:5,padding:"2px 8px",fontSize:10,color:"rgba(255,255,255,0.5)"}}>{panel.number}</div>
+                    <button onClick={()=>regenerateOnePanel(panel)} disabled={!!regenPanel} title="Regenerate this panel" style={{position:"absolute",top:8,right:8,zIndex:13,background:"rgba(0,0,0,0.72)",border:`1px solid ${C.purple}66`,borderRadius:6,padding:"3px 9px",fontSize:11,color:regenPanel===panel.number?C.muted:"#fff",cursor:regenPanel?"default":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>{regenPanel===panel.number ? <><Spinner size={10}/>Redrawing…</> : "↻ Redo"}</button>
+                    {dialogue.filter(d=>d.type==="sfx").map((d,i)=>(
+                      <div key={i} style={{position:"absolute",zIndex:11,top:i%2===0?"32%":"64%",left:i%2===0?"58%":"14%",transform:`rotate(${i%2===0?"-6":"4"}deg)`,fontSize:38,fontWeight:400,color:"#fff",fontFamily:"'Bangers','Comic Neue',sans-serif",letterSpacing:"0.04em",textShadow:"3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000",pointerEvents:"none",userSelect:"none"}}>{d.text}</div>
+                    ))}
+                    {/* BIG / ACTION PANEL — manga bubbles ON the art (reads left-to-right, top-to-bottom) */}
+                    {big && narrLines.map((d,ni)=>(
+                      <div key={"n"+ni} style={{position:"absolute",zIndex:12,top:10+ni*58,left:10,maxWidth:"66%"}}>
+                        <NarrationBox fs={13} variant={captionVariant}>{d.text}</NarrationBox>
+                      </div>
+                    ))}
+                    {big && onArtBubbles(speechThought, panel.mood, 15)}
+                    {(charIntroMap[panel.number]||[]).map((intro,ii)=><CharIntroCard key={"intro"+ii} intro={intro} index={ii} variant={captionVariant}/>)}
+                  </div>
+                  {/* CONVERSATION — quieter beats: floating bubbles & caption boxes in airy white space (webtoon flow) */}
+                  {!big && nonSfx.length>0 && (
+                    <div style={{padding:"12px 16px 14px",display:"flex",flexDirection:"column",gap:11,alignItems:"center"}}>
+                      {nonSfx.map((d,i)=>{
+                        if (d.type==="narration") return (
+                          <div key={i} style={{maxWidth:"86%"}}>
+                            <NarrationBox fs={14} variant={captionVariant}>{d.text}</NarrationBox>
+                          </div>
+                        );
+                        const isThought = d.type==="thought";
+                        if (isThought) return (
+                          <div key={i} style={{maxWidth:"78%",width:"fit-content"}}>
+                            <ThoughtCloud fs={16}>{d.text}</ThoughtCloud>
+                          </div>
+                        );
+                        return (
+                          <div key={i} style={{maxWidth:"82%",width:"fit-content"}}>
+                            <div style={{position:"relative",background:"#ffffff",border:"2.5px solid #141414",borderRadius:"22px",padding:"11px 18px",boxShadow:"0 2px 7px rgba(0,0,0,0.18)"}}>
+                              <div style={{position:"absolute",top:-10,left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"8px solid transparent",borderRight:"8px solid transparent",borderBottom:"10px solid #141414"}}/>
+                              <div style={{fontFamily:BUBBLE_FONT,textTransform:"uppercase",fontSize:"clamp(14px,3.6vw,17px)",color:"#141414",lineHeight:1.25,fontWeight:700,textAlign:"center"}}>{d.text}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1306,10 +2002,24 @@ const Studio = ({user, credits, onUseCredits, drafts, onSave, onRequestAuth, edi
           )}
           <div style={{textAlign:"center",marginTop:20,padding:"16px",color:C.muted,fontSize:12}}>
             <div style={{marginBottom:8}}>✦ Chapter complete</div>
-            <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-              <Btn v="soft" onClick={genPanels} disabled={panelsLoading}>🎨 Regenerate panels</Btn>
-              <Btn v="pri" onClick={()=>setTab("translate")}>🌐 Translate →</Btn>
+            <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
+              <Btn v="soft" onClick={genPanels} disabled={panelsLoading||training}>🎨 Regenerate panels</Btn>
+              <Btn v={cb?.lora?"soft":"pri"} onClick={lockCharacter} disabled={training||panelsLoading} sx={{borderColor:cb?.lora?`${C.teal}88`:undefined}}>
+                {training ? <><Spinner size={11}/> Training…</> : cb?.lora ? "🔒 Character locked ✓" : "🔒 Lock character (best consistency)"}
+              </Btn>
+              <Btn v="soft" onClick={generateEasterEgg} disabled={coverLoading||panelsLoading}>
+                {coverLoading ? <><Spinner size={11}/> Drawing…</> : coverArt ? "🎁 New cover gag" : "🎁 Add cover easter egg"}
+              </Btn>
+              {TRANSLATION_ENABLED && <Btn v="pri" onClick={()=>setTab("translate")}>🌐 Translate →</Btn>}
             </div>
+            {training && trainStatus && <div style={{marginTop:10,fontSize:11,color:C.teal}}>{trainStatus}</div>}
+            {!training && (
+              <div style={{marginTop:10,fontSize:11,color:C.muted,maxWidth:420,margin:"10px auto 0",lineHeight:1.5}}>
+                {cb?.lora
+                  ? "This character is locked — regenerate panels for a consistent look across the chapter."
+                  : "Lock the character to train a one-time model so the protagonist looks identical in every panel (takes a few minutes)."}
+              </div>
+            )}
           </div>
         </div>
       )}

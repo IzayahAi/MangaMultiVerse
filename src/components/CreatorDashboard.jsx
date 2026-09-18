@@ -1,9 +1,27 @@
-﻿import { useState, useRef } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import { useTheme } from "../ThemeContext.jsx";
 import { askClaude, P_PARSE_UPLOAD } from "../lib/claude.js";
 import { Tag, Btn, Spinner, CoverCard } from "./UI.jsx";
 
-const CreatorDashboard = ({ auth, db, published, onShowAuth, onGoStudio, onViewStory, onEditStory, onSaveStory, setToast }) => {
+// This device's saved copy of a story's panel art, filtered to hosted (http) URLs — the only
+// kind safe to sync into the DB row so EVERY reader (not just this browser) sees the panels.
+const localArt = (id) => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(`mv_panels_${id}`) || "null");
+    if (!raw || typeof raw !== "object") return null;
+    const http = Object.fromEntries(Object.entries(raw).filter(([, v]) => typeof v === "string" && v.startsWith("http")));
+    return Object.keys(http).length ? http : null;
+  } catch { return null; }
+};
+
+// A published story is "missing its art in the cloud" when it has panels but no panel_images
+// were saved with the record — so readers on other devices see blank panels.
+const needsArtSync = (s) =>
+  s.status === "published" &&
+  (s.script?.panels?.length > 0) &&
+  Object.keys(s.script?.panel_images || {}).length === 0;
+
+const CreatorDashboard = ({ auth, db, published, onShowAuth, onGoStudio, onViewStory, onEditStory, onSaveStory, onUnpublish, onDelete, setToast }) => {
   const C = useTheme();
   const [creatorTab, setCreatorTab] = useState("dashboard");
   const [uploadFile, setUploadFile] = useState(null);
@@ -15,6 +33,39 @@ const CreatorDashboard = ({ auth, db, published, onShowAuth, onGoStudio, onViewS
   const [seriesName, setSeriesName] = useState("");
   const [agreement, setAgreement] = useState(false);
   const fileRef = useRef(null);
+  const [syncing, setSyncing] = useState(null); // id currently re-syncing art
+  const healed = useRef(new Set());             // ids we've already auto-healed this session
+
+  // Push this device's saved panel art up to the story record so all readers can see it.
+  // Fixes stories published before art was embedded in the DB, or any that shipped art-less.
+  const resyncArt = async (s, silent = false) => {
+    const art = localArt(s.id);
+    if (!art) {
+      if (!silent) setToast?.({ msg: `No local copy of "${s.title}"'s art on this device — reopen it in the Studio and regenerate the panels, then Update live.`, type: "warn" });
+      return false;
+    }
+    if (!silent) setSyncing(s.id);
+    try {
+      await onSaveStory({ ...s, script: { ...(s.script || {}), panel_images: { ...(s.script?.panel_images || {}), ...art } } });
+      if (!silent) setToast?.({ msg: `Panels re-synced for "${s.title}" — readers can see the art now ✓`, type: "ok" });
+      return true;
+    } catch (e) {
+      if (!silent) setToast?.({ msg: `Couldn't sync art: ${e.message}`, type: "err" });
+      return false;
+    } finally { if (!silent) setSyncing(null); }
+  };
+
+  // Self-heal: when the dashboard loads, silently repair any published story that's missing its
+  // cloud art but still has a local copy on this device.
+  useEffect(() => {
+    if (!auth) return;
+    (db.stories || []).forEach(s => {
+      if (needsArtSync(s) && !healed.current.has(s.id) && localArt(s.id)) {
+        healed.current.add(s.id);
+        resyncArt(s, true);
+      }
+    });
+  }, [db.stories, auth]);
 
   if (!auth) return (
     <div style={{textAlign:"center",padding:"80px 20px"}}>
@@ -26,6 +77,13 @@ const CreatorDashboard = ({ auth, db, published, onShowAuth, onGoStudio, onViewS
       <Btn v="pri" onClick={onShowAuth} sx={{padding:"11px 32px",fontSize:14}}>Sign in to continue →</Btn>
     </div>
   );
+
+  // A draft (AI-made, not yet published) reopens in the Studio editor to keep working on;
+  // published or uploaded works open in the reader.
+  const openStory = (s) => {
+    if (s.status !== "published" && !s.upload_type && onEditStory) onEditStory(s);
+    else onViewStory(s);
+  };
 
   const readFile = (file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -177,7 +235,7 @@ const CreatorDashboard = ({ auth, db, published, onShowAuth, onGoStudio, onViewS
               <div style={{fontSize:12,fontWeight:500,marginBottom:10}}>Your series</div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
                 {db.stories.slice(0,4).map(s=>(
-                  <CoverCard key={s.id} item={s} aiMade onClick={()=>onViewStory(s)}/>
+                  <CoverCard key={s.id} item={s} aiMade onClick={()=>openStory(s)}/>
                 ))}
               </div>
               {db.stories.length>4&&<div style={{textAlign:"center",marginTop:10}}><Btn onClick={()=>setCreatorTab("series")}>View all {db.stories.length} series →</Btn></div>}
@@ -334,7 +392,7 @@ const CreatorDashboard = ({ auth, db, published, onShowAuth, onGoStudio, onViewS
                   <div key={s.id} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 14px",background:C.card,border:`0.5px solid ${C.border}`,borderRadius:10,cursor:"pointer"}}
                     onMouseEnter={e=>e.currentTarget.style.borderColor=C.purple}
                     onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}
-                    onClick={()=>onViewStory(s)}>
+                    onClick={()=>openStory(s)}>
                     <div style={{width:44,height:60,borderRadius:6,background:s.cover_color||"#1a0d3e",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>{s.emoji||"📖"}</div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:500,color:C.text,marginBottom:2}}>{s.title}</div>
@@ -344,12 +402,40 @@ const CreatorDashboard = ({ auth, db, published, onShowAuth, onGoStudio, onViewS
                     <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:5,flexShrink:0}}>
                       <Tag c={s.status==="published"?C.teal:C.gold}>{s.status}</Tag>
                       <div style={{fontSize:11,color:C.muted}}>{s.upload_type?"Uploaded":"AI-made"}</div>
-                      {!s.upload_type && onEditStory && (
-                        <button onClick={e=>{e.stopPropagation();onEditStory(s);}}
-                          style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:`0.5px solid ${C.purple}66`,background:C.purple+"18",color:C.purpleL,cursor:"pointer",fontFamily:"inherit"}}>
-                          ✎ Edit
-                        </button>
-                      )}
+                      <div style={{display:"flex",gap:5,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                        {!s.upload_type && onEditStory && (
+                          <button onClick={e=>{e.stopPropagation();onEditStory(s);}}
+                            style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:`0.5px solid ${C.purple}66`,background:C.purple+"18",color:C.purpleL,cursor:"pointer",fontFamily:"inherit"}}>
+                            ✎ Edit
+                          </button>
+                        )}
+                        {needsArtSync(s) && (
+                          localArt(s.id) ? (
+                            <button onClick={e=>{e.stopPropagation();resyncArt(s);}} disabled={syncing===s.id}
+                              title="This story's panels aren't saved to the cloud yet — readers see blanks. Click to push this device's art up."
+                              style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:`0.5px solid ${C.teal}66`,background:C.teal+"18",color:C.teal,cursor:syncing===s.id?"default":"pointer",fontFamily:"inherit",opacity:syncing===s.id?0.6:1}}>
+                              {syncing===s.id?"Syncing…":"⟳ Sync art"}
+                            </button>
+                          ) : (
+                            <span title="Panel art isn't saved to the cloud and no local copy is on this device. Reopen in the Studio and regenerate the panels, then Update live."
+                              style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:`0.5px solid ${C.gold}66`,background:C.gold+"18",color:C.gold,fontFamily:"inherit"}}>
+                              ⚠ art missing
+                            </span>
+                          )
+                        )}
+                        {s.status==="published" && onUnpublish && (
+                          <button onClick={e=>{e.stopPropagation();onUnpublish(s);}}
+                            style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:`0.5px solid ${C.gold}66`,background:C.gold+"18",color:C.gold,cursor:"pointer",fontFamily:"inherit"}}>
+                            ⤓ Unpublish
+                          </button>
+                        )}
+                        {onDelete && (
+                          <button onClick={e=>{e.stopPropagation(); if(window.confirm(`Delete "${s.title}" permanently? This cannot be undone.`)) onDelete(s);}}
+                            style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:`0.5px solid #e0533d66`,background:"#e0533d18",color:"#e0533d",cursor:"pointer",fontFamily:"inherit"}}>
+                            🗑 Delete
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}

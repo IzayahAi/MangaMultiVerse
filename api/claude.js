@@ -1,24 +1,26 @@
+import { guard, corsHeaders } from "./_guard.js";
+
 export const config = { runtime: 'edge' };
 
 export default async function handler(req) {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
+  const cors = corsHeaders(req);
 
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 200, headers: corsHeaders });
-  }
-
-  if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405, headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: cors });
+  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405, headers: cors });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return new Response(JSON.stringify({ error: 'ANTHROPIC_API_KEY not configured' }), {
-      status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      status: 500, headers: { 'Content-Type': 'application/json', ...cors },
+    });
+  }
+
+  // Auth + atomic credit charge (skipped while the launch gate is off — see _pricing.js).
+  const action = req.headers.get('x-mv-action') || 'misc';
+  const g = await guard(req, action);
+  if (!g.ok) {
+    return new Response(JSON.stringify({ error: g.error }), {
+      status: g.status, headers: { 'Content-Type': 'application/json', ...cors },
     });
   }
 
@@ -35,8 +37,7 @@ export default async function handler(req) {
   });
 
   const data = await response.json();
-  return new Response(JSON.stringify(data), {
-    status: response.status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders },
-  });
+  const headers = { 'Content-Type': 'application/json', ...cors };
+  if (g.balance != null) headers['x-mv-balance'] = String(g.balance);
+  return new Response(JSON.stringify(data), { status: response.status, headers });
 }

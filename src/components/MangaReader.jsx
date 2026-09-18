@@ -1,8 +1,37 @@
 ﻿import { useState, useRef, useEffect } from "react";
-import { MOOD_PALETTES, getMood } from "../constants.js";
+import { MOOD_PALETTES, getMood, LANG_GROUPS, RELEASE_MODE, TRANSLATION_ENABLED } from "../constants.js";
 import { useTheme } from "../ThemeContext.jsx";
+import { askClaude, P_TRANSLATE, translateChapter } from "../lib/claude.js";
+import { fetchTranslation, fetchChapter, submitReport } from "../lib/supabase.js";
+import { BUBBLE_FONT, SHOUT_FONT, isBigPanel, onArtBubbles, ThoughtCloud, spreadShots, spreadCellSpan, buildCharIntros, firstAppearances, CharIntroCard, NarrationBox } from "./mangaBubbles.jsx";
 
-const buildPanels = (story, panelImages = {}) => {
+// Swap each panel's dialogue text with its translation. Matches by panel number + normalized
+// original text (robust to the reader's dialogue cleaning), so index drift doesn't misalign lines.
+function applyTranslation(panels, translation) {
+  if (!translation?.panels) return panels;
+  const norm = s => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 60);
+  const byNum = new Map();
+  translation.panels.forEach(tp => { if (tp && tp.number != null) byNum.set(tp.number, tp.dialogue || []); });
+  return panels.map(p => {
+    if (p._isTitle && translation.chapter_title) return { ...p, _chapterTitle: translation.chapter_title };
+    if (!p.dialogue || !p.dialogue.length) return p;
+    const td = byNum.get(p.number);
+    if (!td || !td.length) return p;
+    const used = new Array(td.length).fill(false);
+    const dialogue = p.dialogue.map((d, i) => {
+      // 1) exact original-text match at the same slot, 2) search other slots by original text,
+      // 3) positional fallback (translator kept order but paraphrased the 'original' field).
+      let hit = (td[i] && norm(td[i].original) === norm(d.text)) ? i : -1;
+      if (hit < 0) hit = td.findIndex((t, ti) => !used[ti] && t && norm(t.original) === norm(d.text));
+      if (hit < 0 && td[i] && !used[i] && td[i].translated) hit = i;
+      if (hit >= 0 && td[hit]?.translated) { used[hit] = true; return { ...d, text: td[hit].translated }; }
+      return d;
+    });
+    return { ...p, dialogue };
+  });
+}
+
+const buildPanels = (story, panelImages = {}, activeScript = story.script, chapterNum = 1) => {
   const title = story.title || "Untitled";
   const tagline = story.tagline || "";
   const genre = (story.genre_tags||[])[0] || "";
@@ -10,17 +39,20 @@ const buildPanels = (story, panelImages = {}) => {
   const introPanel = {
     number: 0, panel_type: "full_page", scene: "title card", mood: "dramatic",
     dialogue: [], visual_notes: "", image: null, _isTitle: true,
-    _title: title, _tagline: tagline, _genre: genre, _chapterNum: 1,
-    _chapterTitle: story.script?.chapter_title || "Chapter 1",
+    _title: title, _tagline: tagline, _genre: genre, _chapterNum: chapterNum,
+    _chapterTitle: activeScript?.chapter_title || `Chapter ${chapterNum}`,
+    // Cover art is story-level — show it only on Chapter 1's intro.
+    _coverUrl: chapterNum === 1 ? ((story.cover_art || story.script?.cover_art)?.url || null) : null,
+    _coverCaption: chapterNum === 1 ? ((story.cover_art || story.script?.cover_art)?.caption || "") : "",
   };
 
   const outroPanel = {
     number: 9999, panel_type: "full_page", scene: "end card", mood: "dramatic",
     dialogue: [], visual_notes: "", image: null, _isOutro: true,
-    _title: title, _tagline: tagline, _endHook: story.script?.chapter_end_hook || "",
+    _title: title, _tagline: tagline, _endHook: activeScript?.chapter_end_hook || "",
   };
 
-  const script = story.script;
+  const script = activeScript;
   if (script?.panels?.length) {
     const mainPanels = script.panels.map(p => ({
       number: p.number,
@@ -45,6 +77,9 @@ const buildPanels = (story, panelImages = {}) => {
       }),
       visual_notes: p.visual_notes || "",
       panel_type: p.panel_type || "half_page",
+      scene_heading: p.scene_heading || "",
+      shots: Array.isArray(p.shots) ? p.shots : null,
+      shotImages: (Array.isArray(p.shots) ? p.shots : []).map((_, i) => panelImages[`${p.number}.${i}`] || null),
       image: panelImages[p.number] || null,
     }));
     return [introPanel, ...mainPanels, outroPanel];
@@ -84,7 +119,7 @@ const buildPanels = (story, panelImages = {}) => {
 
 const PANEL_HEIGHTS = {full_page:480, half_page:280, quarter:180, thin_strip:100};
 
-const MangaReader = ({ story, onBack, panelImages }) => {
+const MangaReader = ({ story, onBack, panelImages, signedIn = false, reporterId = null }) => {
   const C = useTheme();
   const [readMode, setReadMode] = useState("scroll");
   const [currentPage, setCurrentPage] = useState(0);
@@ -92,11 +127,100 @@ const MangaReader = ({ story, onBack, panelImages }) => {
   const [showNav, setShowNav] = useState(true);
   const [currentChapter, setCurrentChapter] = useState(1);
   const [fontSize, setFontSize] = useState(13);
-  // Prefer images passed in; else load persisted images for this story
-  const images = panelImages || (() => {
-    try { return JSON.parse(localStorage.getItem(`mv_panels_${story.id}`) || "{}"); } catch { return {}; }
+  const [translation, setTranslation] = useState(null); // translated chapter for the active non-English lang
+  const [translating, setTranslating] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);  // report menu open
+  const [reported, setReported] = useState(false);      // this reader already reported it
+  const doReport = async (reason) => { setReportOpen(false); setReported(true); try { await submitReport(story.id, story.title, reason, reporterId); } catch {} };
+  const [transErr, setTransErr] = useState(false);
+  // Images: prop first; else this device's saved copy; else the URLs the creator published WITH
+  // the story (so other viewers/devices see the art too).
+  const ch1Images = panelImages || (() => {
+    try { const ls = JSON.parse(localStorage.getItem(`mv_panels_${story.id}`) || "null"); if (ls && Object.keys(ls).length) return ls; } catch {}
+    return story.script?.panel_images || {};
   })();
-  const panels = buildPanels(story, images);
+  // Active chapter content: Ch.1 is the story record's script; Ch.2+ load from the chapters table.
+  const [chScript, setChScript] = useState(story.script);
+  const [chImages, setChImages] = useState(ch1Images);
+  const [chLoading, setChLoading] = useState(false);
+  useEffect(() => {
+    let active = true;
+    if (currentChapter <= 1) { setChScript(story.script); setChImages(ch1Images); setChLoading(false); return; }
+    const cacheKey = `mv_ch_${story.id}_${currentChapter}`;
+    try { const c = JSON.parse(localStorage.getItem(cacheKey) || "null"); if (c?.panels) { setChScript(c); setChImages(c.panel_images || {}); } } catch {}
+    setChLoading(true);
+    (async () => {
+      const row = await fetchChapter(story.id, currentChapter);
+      if (!active) return;
+      if (row?.script?.panels?.length) {
+        setChScript(row.script); setChImages(row.script.panel_images || {});
+        try { localStorage.setItem(cacheKey, JSON.stringify(row.script)); } catch {}
+      }
+      setChLoading(false);
+    })();
+    return () => { active = false; };
+  }, [currentChapter, story.id]);
+  const images = chImages;
+  // The language this chapter was AUTHORED in (classic formats read natively, e.g. Japanese). Picking
+  // any OTHER language — including English — translates; picking the source language shows the original.
+  const srcLang = chScript?.native_language || story.script?.native_language || "English";
+  // Classic manga packs bubbles ONTO the art (no airy webtoon gutter). Default to classic for EVERY
+  // story — only Prisma/Global explicitly tagged "webtoon" keep the conversation zone. This way older
+  // stories (made before the layout tag) also lose the blank gutter, not just newly generated ones.
+  const classicLayout = (chScript?.layout || story.script?.layout) !== "webtoon";
+  // Manga is strictly black-and-white — force grayscale so any color the image model leaks into the
+  // art (colored energy/FX, etc.) is stripped, guaranteeing a classic monochrome page.
+  const monoFilter = (chScript?.mono ?? story.script?.mono) ? "grayscale(1) contrast(1.04)" : "none";
+  // First-appearance intro nameplates (name + epithet), one per named character, manga-style.
+  const introMap = firstAppearances(chScript?.panels, buildCharIntros(story));
+  const captionVariant = story.script?.art_style === "US-EN" ? "comic" : "manga"; // Comics style → hand-lettered caption boxes
+
+  // On-demand translation: when a reader picks a non-English language, translate the chapter live
+  // (via the same P_TRANSLATE engine the Studio uses) and cache it so switching back is instant.
+  useEffect(() => {
+    let active = true;
+    setTransErr(false);
+    const allPanels = chScript?.panels;
+    // Demo: English only — no live translation (saves tokens). Turns on at launch.
+    if (!TRANSLATION_ENABLED) { setTranslation(null); setTranslating(false); return; }
+    if (lang === srcLang || !allPanels?.length) { setTranslation(null); setTranslating(false); return; }
+    // Pre-generated at publish time → instant, no AI call, same for every reader/device.
+    const pre = chScript?.translations?.[lang];
+    if (pre?.panels?.length) { setTranslation(pre); setTranslating(false); return; }
+    const cacheKey = `mv_trans_v3_${story.id}_${currentChapter}_${lang}`; // v3: per-chapter, batched
+    try { const c = JSON.parse(localStorage.getItem(cacheKey) || "null"); if (c?.panels) { setTranslation(c); setTranslating(false); return; } } catch {}
+    setTranslating(true); setTranslation(null);
+    (async () => {
+      // 1) Pre-generated in the translations store (Ch.1 only for now; Ch.2+ translate live below).
+      try {
+        const stored = currentChapter <= 1 ? await fetchTranslation(story.id, lang) : null;
+        if (!active) return;
+        if (stored?.panels?.length) {
+          setTranslation(stored); setTranslating(false);
+          try { localStorage.setItem(cacheKey, JSON.stringify(stored)); } catch {}
+          return;
+        }
+      } catch {}
+      // At release, live on-demand translation is a signed-in, credited action — guests get only the
+      // pre-generated languages (served above). During demo (gate off) everyone can translate live.
+      if (RELEASE_MODE && !signedIn) { if (active) { setTransErr(true); setTranslating(false); } return; }
+      // 2) Live on-demand fallback — concurrent 12-panel batches (fast, never truncates).
+      try {
+        const out = await translateChapter(chScript, lang, story.voices, story);
+        if (!active) return;
+        if (out?.panels?.length) {
+          setTranslation(out);
+          try { localStorage.setItem(cacheKey, JSON.stringify(out)); } catch {}
+        } else setTransErr(true);
+      } catch { if (active) setTransErr(true); }
+      finally { if (active) setTranslating(false); }
+    })();
+    return () => { active = false; };
+  }, [lang, story?.id, currentChapter, chScript]);
+
+  const panels = applyTranslation(buildPanels(story, images, chScript, currentChapter), translation);
+  // Translated text runs bigger — many readers view at ~50% zoom, and non-Latin scripts need the room.
+  const readFs = fontSize + (translation ? 4 : 0);
   const thoughtStyle = story.script?.thought_style || "caption"; // "caption" (webtoon) | "bubble" (comic)
   const totalChapters = story.chapters || 1;
   const containerRef = useRef(null);
@@ -130,7 +254,7 @@ const MangaReader = ({ story, onBack, panelImages }) => {
   }, [readMode, panels.length, onBack]);
 
   return (
-    <div ref={containerRef} style={{background:"#000",minHeight:"100vh",margin:"-24px -20px",padding:0,position:"relative"}}
+    <div ref={containerRef} style={{background:"#000",position:"fixed",inset:0,zIndex:1000,overflowY:"auto",padding:0}}
       onMouseMove={resetNavTimer} onClick={resetNavTimer}>
 
       <div style={{position:"fixed",top:0,left:0,right:0,zIndex:100,transition:"opacity .3s",opacity:showNav?1:0,pointerEvents:showNav?"auto":"none"}}>
@@ -152,13 +276,27 @@ const MangaReader = ({ story, onBack, panelImages }) => {
               </button>
             ))}
           </div>
-          <select value={lang} onChange={e=>setLang(e.target.value)}
-            style={{fontSize:11,padding:"4px 8px",borderRadius:6,border:"0.5px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"#fff",fontFamily:"inherit",cursor:"pointer"}}>
-            {["English","Korean","Japanese","Spanish","French","Arabic","Portuguese","German"].map(l=><option key={l}>{l}</option>)}
-          </select>
+          {TRANSLATION_ENABLED && <select value={lang} onChange={e=>setLang(e.target.value)} title={srcLang==="English"?"Translate this chapter":`Originally in ${srcLang} — translate or read the original`}
+            style={{fontSize:11,padding:"4px 8px",borderRadius:6,border:`0.5px solid ${lang!==srcLang?"rgba(124,58,237,0.7)":"rgba(255,255,255,0.2)"}`,background:"rgba(255,255,255,0.1)",color:"#fff",fontFamily:"inherit",cursor:"pointer",maxWidth:150}}>
+            {LANG_GROUPS.map(g=>(<optgroup key={g.region} label={g.region} style={{color:"#000"}}>{g.langs.map(l=><option key={l} value={l} style={{color:"#000"}}>{l}{l===srcLang?" (original)":""}</option>)}</optgroup>))}
+          </select>}
+          {translating && <span style={{fontSize:10,color:"#c4b5fd",whiteSpace:"nowrap"}}>⟳ Translating…</span>}
+          {!translating && lang!==srcLang && !transErr && translation && <span style={{fontSize:9,color:"#a78bfa",whiteSpace:"nowrap"}}>✦ AI translation{srcLang!=="English"?` from ${srcLang}`:""}</span>}
+          {!translating && transErr && <span style={{fontSize:9,color:"#f59e0b",whiteSpace:"nowrap"}}>translation failed — showing {srcLang==="English"?"English":"the original"}</span>}
           <div style={{display:"flex",alignItems:"center",gap:4}}>
             <button onClick={()=>setFontSize(f=>Math.max(10,f-1))} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"#fff",cursor:"pointer",width:22,height:22,borderRadius:4,fontSize:14,lineHeight:1}}>−</button>
             <button onClick={()=>setFontSize(f=>Math.min(18,f+1))} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"#fff",cursor:"pointer",width:22,height:22,borderRadius:4,fontSize:14,lineHeight:1}}>+</button>
+          </div>
+          <div style={{position:"relative",flexShrink:0}}>
+            <button onClick={()=>setReportOpen(o=>!o)} title="Report this story" disabled={reported} style={{background:"rgba(255,255,255,0.1)",border:"none",color:reported?"#22c55e":"rgba(255,255,255,0.85)",cursor:reported?"default":"pointer",fontFamily:"inherit",fontSize:11,padding:"5px 10px",borderRadius:6}}>{reported?"✓ Reported":"⚑ Report"}</button>
+            {reportOpen && !reported && (
+              <div style={{position:"absolute",right:0,top:"120%",background:"#16161c",border:"0.5px solid rgba(255,255,255,0.15)",borderRadius:10,padding:10,width:210,zIndex:130,boxShadow:"0 10px 28px rgba(0,0,0,0.55)"}}>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Report this story for…</div>
+                {["Inappropriate / explicit","Stolen / plagiarized","Harassment or hate","Spam","Other"].map(r=>(
+                  <button key={r} onClick={()=>doReport(r)} style={{display:"block",width:"100%",textAlign:"left",padding:"7px 8px",borderRadius:6,marginBottom:2,border:"none",background:"transparent",color:"#fff",cursor:"pointer",fontFamily:"inherit",fontSize:12}} onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.08)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>{r}</button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <div style={{height:2,background:"rgba(255,255,255,0.1)"}}>
@@ -169,7 +307,7 @@ const MangaReader = ({ story, onBack, panelImages }) => {
       </div>
 
       {readMode==="scroll"&&(
-        <div style={{paddingTop:52,maxWidth:720,margin:"0 auto",background:"#000"}}>
+        <div style={{paddingTop:52,maxWidth:720,margin:"0 auto",background:"#e9e9e4"}}>
           {panels.map((panel,i) => {
             const mood = getMood(panel.scene + " " + panel.mood);
             const palette = MOOD_PALETTES[mood];
@@ -200,7 +338,17 @@ const MangaReader = ({ story, onBack, panelImages }) => {
                   </div>
                   {panel._tagline&&<div style={{fontSize:14,color:"rgba(255,255,255,0.6)",fontStyle:"italic",marginBottom:28,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>{panel._tagline}</div>}
                   <div style={{width:60,height:2,background:`linear-gradient(90deg,transparent,${C.purple},${C.pink},transparent)`,margin:"0 auto 20px"}}/>
-                  <div style={{fontSize:13,color:C.purple,letterSpacing:"0.15em",textTransform:"uppercase",fontFamily:"'Cinzel',serif"}}>{panel._chapterTitle || "Chapter 1"}</div>
+                  <div style={{fontSize:13,color:C.purple,letterSpacing:"0.15em",textTransform:"uppercase",fontFamily:"'Cinzel',serif",marginBottom:panel._coverUrl?24:0}}>{panel._chapterTitle || "Chapter 1"}</div>
+                  {/* BONUS non-canon cover art (SBS-style easter egg) */}
+                  {panel._coverUrl && (
+                    <div style={{maxWidth:340,margin:"0 auto"}}>
+                      <div style={{border:"3px solid rgba(255,255,255,0.85)",borderRadius:3,overflow:"hidden",boxShadow:"0 6px 24px rgba(0,0,0,0.5)"}}>
+                        <img src={panel._coverUrl} alt="Bonus cover" style={{width:"100%",display:"block"}}/>
+                      </div>
+                      {panel._coverCaption && <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",fontStyle:"italic",marginTop:10,lineHeight:1.5,fontFamily:"'DM Sans',sans-serif"}}>“{panel._coverCaption}”</div>}
+                      <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",letterSpacing:"0.14em",textTransform:"uppercase",marginTop:6}}>Bonus · not part of the story</div>
+                    </div>
+                  )}
                 </div>
                 <div style={{position:"absolute",top:20,left:20,width:30,height:30,borderTop:`2px solid ${C.purple}88`,borderLeft:`2px solid ${C.purple}88`}}/>
                 <div style={{position:"absolute",top:20,right:20,width:30,height:30,borderTop:`2px solid ${C.purple}88`,borderRight:`2px solid ${C.purple}88`}}/>
@@ -234,81 +382,97 @@ const MangaReader = ({ story, onBack, panelImages }) => {
                 if (/^(actual (name|words|spoken)|real (content|dialogue|title)|character name|dialogue text)/.test(t)) return false;
                 return true;
               });
-            const cleanSpeeches = cleanDlg.filter(d => d.type==="speech" || (thoughtStyle==="bubble" && d.type==="thought"));
-            const cleanThoughts = thoughtStyle==="caption" ? cleanDlg.filter(d => d.type==="thought") : [];
-            const cleanSfx = cleanDlg.filter(d => d.type==="sfx");
-            const cleanNarr = cleanDlg.filter(d => d.type==="narration");
-
-            const imgSrc = panel.image
-              ? (panel.image.startsWith("data:") ? panel.image : "data:image/png;base64,"+panel.image)
-              : null;
+            const nonSfx = cleanDlg.filter(d => d.type!=="sfx");
+            const sfx = cleanDlg.filter(d => d.type==="sfx");
+            const speechThought = nonSfx.filter(d => d.type==="speech" || d.type==="thought");
+            const narrLines = nonSfx.filter(d => d.type==="narration");
+            const shots = spreadShots(panel);            // 2-4 sub-scenes → composite spread
+            const toSrc = (v) => !v ? null : (v.startsWith("data:") || v.startsWith("http") ? v : "data:image/png;base64,"+v);
+            const imgSrc = toSrc(panel.image);
+            const shotSrcs = shots ? shots.map((_,si)=>toSrc(panel.shotImages?.[si])) : [];
+            const hasArt = !!imgSrc || shotSrcs.some(Boolean);
+            // Bubbles go ON the art only when there IS art — otherwise a failed image would be a black void.
+            // Classic manga formats put EVERY panel's bubbles on the art (no webtoon conversation gutter).
+            const big = (isBigPanel(panel) || !!shots || classicLayout) && hasArt;
 
             return (
-              <div key={panel.number} style={{marginBottom:1, position:"relative"}}>
-                <div style={{
-                  minHeight: imgSrc ? undefined : h, width:"100%",
-                  background: imgSrc ? "#0a0a0a" : `linear-gradient(160deg, ${palette.bg} 0%, #111 100%)`,
-                  position:"relative", overflow:"hidden",
-                }}>
-                  {/* Render the panel at its natural aspect ratio (tall webtoon / wide comic) — no cropping */}
-                  {imgSrc&&<img src={imgSrc} alt={`Panel ${panel.number}`} style={{width:"100%",display:"block"}}/>}
-                  {!imgSrc&&<div style={{position:"absolute",inset:0,background:`radial-gradient(ellipse at 50% 40%, ${palette.accent}88 0%, transparent 60%)`}}/>}
-                  {!imgSrc&&mood==="action"&&(
-                    <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:0.06,pointerEvents:"none"}} viewBox="0 0 720 280">
-                      {Array.from({length:18},(_,li)=>{const cx=360,cy=140,a=(li/18)*Math.PI*2;return <line key={li} x1={cx} y1={cy} x2={cx+Math.cos(a)*900} y2={cy+Math.sin(a)*900} stroke={palette.accent} strokeWidth="1.5"/>;})}
-                    </svg>
-                  )}
-                  {(cleanNarr.length>0||cleanThoughts.length>0)&&(
-                    <div style={{position:"absolute",top:0,left:0,right:0,zIndex:12,display:"flex",flexDirection:"column",alignItems:"flex-start",gap:6,padding:"8px 10px 0",pointerEvents:"none"}}>
-                      {cleanNarr.map((d,ni)=>(
-                        <div key={"n"+ni} style={{alignSelf:"stretch",background:"rgba(0,0,0,0.85)",borderLeft:"3px solid rgba(245,158,11,0.6)",padding:"7px 14px",borderRadius:4}}>
-                          <div style={{fontSize:fontSize,color:"#f5c842",fontStyle:"italic",lineHeight:1.5,fontFamily:"'DM Sans',Arial,sans-serif",direction:"ltr"}}>{d.text}</div>
-                        </div>
-                      ))}
-                      {cleanThoughts.map((d,ti)=>(
-                        <div key={"t"+ti} style={{maxWidth:"80%",background:"rgba(255,255,255,0.95)",borderLeft:`3px solid ${C.purple}`,borderRadius:5,padding:"7px 13px",boxShadow:"0 3px 10px rgba(0,0,0,0.5)"}}>
-                          <div style={{fontSize:fontSize,color:"#141414",fontStyle:"italic",fontWeight:600,lineHeight:1.5,fontFamily:"'DM Sans',Arial,sans-serif",direction:"ltr"}}>{d.text}</div>
-                        </div>
-                      ))}
+              <div key={panel.number} style={{background:"#e9e9e4"}}>
+                {/* SCENE CUT — divider header when the story jumps to a new place/time */}
+                {panel.scene_heading && (
+                  <div style={{padding:"30px 24px 12px",display:"flex",alignItems:"center",gap:12,justifyContent:"center"}}>
+                    <div style={{height:1,flex:"0 1 56px",background:"#c3c3ba"}}/>
+                    <div style={{fontSize:11,letterSpacing:"0.14em",textTransform:"uppercase",color:"#7a7a70",fontWeight:600,textAlign:"center"}}>{panel.scene_heading}</div>
+                    <div style={{height:1,flex:"0 1 56px",background:"#c3c3ba"}}/>
+                  </div>
+                )}
+                {/* IMAGE — the picture for this beat (natural aspect, SFX painted on the art) */}
+                <div style={{position:"relative",background:"#0a0a0a"}}>
+                  {(shots && hasArt) ? (
+                    /* SPREAD — 2-4 sub-scenes composited in one frame with manga gutters */
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:3,background:"#111"}}>
+                      {shots.map((sc,si)=>{
+                        const src = shotSrcs[si];
+                        return (
+                          <div key={si} style={{position:"relative",background:"#0a0a0a",minHeight:src?undefined:150,...spreadCellSpan(shots.length,si)}}>
+                            {src
+                              ? <img src={src} alt={`Panel ${panel.number} shot ${si+1}`} style={{width:"100%",height:"100%",objectFit:"cover",display:"block",filter:monoFilter}}/>
+                              : <div style={{position:"absolute",inset:0,background:`radial-gradient(ellipse at 50% 40%, ${palette.accent}66 0%, transparent 65%)`,display:"flex",alignItems:"flex-end",padding:10}}><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontStyle:"italic",lineHeight:1.3}}>{sc.slice(0,60)}</div></div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : imgSrc ? (
+                    <img src={imgSrc} alt={`Panel ${panel.number}`} style={{width:"100%",display:"block",filter:monoFilter}}/>
+                  ) : (
+                    /* No art (generation failed/pending) — a COMPACT placeholder, never a tall black void */
+                    <div style={{minHeight:200,width:"100%",position:"relative",overflow:"hidden",background:`linear-gradient(160deg, ${palette.bg} 0%, #111 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:"18px"}}>
+                      <div style={{position:"absolute",inset:0,background:`radial-gradient(ellipse at 50% 40%, ${palette.accent}55 0%, transparent 65%)`}}/>
+                      <div style={{position:"relative",textAlign:"center",maxWidth:"80%"}}>
+                        <div style={{fontSize:22,marginBottom:6,opacity:0.5}}>🖼</div>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",lineHeight:1.4,fontStyle:"italic"}}>{(panel.scene||"").slice(0,90)}</div>
+                      </div>
                     </div>
                   )}
-                  {cleanSfx.map((d,si)=>(
-                    <div key={si} style={{position:"absolute",zIndex:11,top:"50%",left:"50%",transform:`translate(-50%,-50%) rotate(${si%2===0?"-5":"3"}deg)`,fontSize:h>300?64:42,fontWeight:900,color:"#e84393",fontFamily:"'Cinzel',serif",letterSpacing:"0.06em",textShadow:"3px 3px 0 #000, 0 0 30px rgba(232,67,147,0.8)",lineHeight:1,whiteSpace:"nowrap",pointerEvents:"none",userSelect:"none"}}>
-                      {d.text}
+                  {sfx.map((d,si)=>(
+                    <div key={si} style={{position:"absolute",zIndex:11,top:si%2===0?"32%":"64%",left:si%2===0?"58%":"14%",transform:`rotate(${si%2===0?"-6":"4"}deg)`,fontSize:h>300?58:42,fontWeight:400,color:"#fff",fontFamily:SHOUT_FONT,letterSpacing:"0.04em",textShadow:"3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000",pointerEvents:"none",userSelect:"none"}}>{d.text}</div>
+                  ))}
+                  {/* BIG / ACTION PANEL — manga bubbles ON the art (reads left-to-right, top-to-bottom) */}
+                  {big && narrLines.map((d,ni)=>(
+                    <div key={"n"+ni} style={{position:"absolute",zIndex:12,top:10+ni*58,left:10,maxWidth:"66%"}}>
+                      <NarrationBox fs={Math.max(12,readFs)} variant={captionVariant}>{d.text}</NarrationBox>
                     </div>
                   ))}
-                  {cleanSpeeches.map((d,si)=>{
-                    const pos = BUBBLE_POS[si%BUBBLE_POS.length];
-                    const isVillain = /villain|antagonist|enemy|evil/i.test(d.character||"");
-                    const isThought = d.type==="thought";
-                    const bg = isVillain?"rgba(15,0,10,0.95)":"rgba(255,255,255,0.96)";
-                    const tc = isVillain?"#ffccee":"#111";
-                    const bc = isVillain?"#e84393":"rgba(0,0,0,0.2)";
-                    const tLeft = pos.right?"auto":pos.transform?"50%":"20px";
-                    const tRight = pos.right?"20px":"auto";
-                    const tTx = pos.transform?"translateX(-50%)":"none";
-                    return (
-                      <div key={si} style={{position:"absolute",zIndex:10,...pos}}>
-                        <div style={{position:"relative",display:"inline-block"}}>
-                          <div style={{background:bg,border:`1.5px solid ${bc}`,borderRadius:isThought?"40%/35%":"999px",padding:"6px 13px",boxShadow:"0 2px 10px rgba(0,0,0,0.6)",minWidth:36,maxWidth:"100%"}}>
-                            {isThought&&d.character&&<div style={{fontSize:9,fontWeight:700,color:tc,opacity:0.55,textAlign:"center",marginBottom:2}}>{d.character} (thinking)</div>}
-                            <div style={{fontSize:fontSize,color:tc,lineHeight:1.4,fontWeight:600,fontFamily:"'DM Sans',Arial,sans-serif",direction:"ltr",textAlign:"center",whiteSpace:"normal",fontStyle:isThought?"italic":"normal"}}>
-                              {d.text}
-                            </div>
-                          </div>
-                          {!isThought&&(
-                            <div style={{position:"absolute",bottom:-8,left:tLeft,right:tRight,transform:tTx,width:0,height:0,borderLeft:"6px solid transparent",borderRight:"6px solid transparent",borderTop:`8px solid ${bg}`,filter:"drop-shadow(0 1px 1px rgba(0,0,0,0.4))"}}/>
-                          )}
-                          {isThought&&(
-                            <div style={{position:"absolute",bottom:-14,left:tLeft,display:"flex",flexDirection:"column",gap:2,alignItems:"center"}}>
-                              {[5,3,2].map((s,ti)=><div key={ti} style={{width:s,height:s,borderRadius:"50%",background:bg}}/>)}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {big && onArtBubbles(speechThought, panel.mood, Math.max(14,readFs))}
+                  {(introMap[panel.number]||[]).map((intro,ii)=><CharIntroCard key={"intro"+ii} intro={intro} index={ii} variant={captionVariant}/>)}
                 </div>
+                {/* CONVERSATION — quieter beats: floating bubbles & caption boxes in airy white space (webtoon flow) */}
+                {!big && nonSfx.length>0 && (
+                  <div style={{padding:"12px 16px 14px",display:"flex",flexDirection:"column",gap:11,alignItems:"center"}}>
+                    {nonSfx.map((d,di)=>{
+                      if (d.type==="narration") return (
+                        <div key={di} style={{maxWidth:"86%"}}>
+                          <NarrationBox fs={Math.max(14,readFs)} variant={captionVariant}>{d.text}</NarrationBox>
+                        </div>
+                      );
+                      const isThought = d.type==="thought";
+                      const isVillain = /villain|antagonist|enemy|evil/i.test(d.character||"");
+                      if (isThought) return (
+                        <div key={di} style={{maxWidth:"78%",width:"fit-content"}}>
+                          <ThoughtCloud bg={isVillain?"#1a0010":"#fff"} stroke={isVillain?"#e84393":"#111"} color={isVillain?"#ffd9ec":"#141414"} fs={Math.max(14,readFs+1)}>{d.text}</ThoughtCloud>
+                        </div>
+                      );
+                      const bc = isVillain ? "#b3005f" : "#141414";
+                      return (
+                        <div key={di} style={{maxWidth:"82%",width:"fit-content"}}>
+                          <div style={{position:"relative",background:"#ffffff",border:`2.5px solid ${bc}`,borderRadius:"22px",padding:"11px 18px",boxShadow:"0 2px 7px rgba(0,0,0,0.18)"}}>
+                            <div style={{position:"absolute",top:-10,left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"8px solid transparent",borderRight:"8px solid transparent",borderBottom:`10px solid ${bc}`}}/>
+                            <div style={{fontFamily:BUBBLE_FONT,textTransform:"uppercase",fontSize:`clamp(14px,3.6vw,${Math.max(15,readFs+2)}px)`,color:"#141414",lineHeight:1.25,fontWeight:700,textAlign:"center"}}>{d.text}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -316,7 +480,7 @@ const MangaReader = ({ story, onBack, panelImages }) => {
             <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:20}}>— End of Chapter {currentChapter} —</div>
             <div style={{display:"flex",justifyContent:"center",gap:12}}>
               {currentChapter>1&&<button onClick={()=>setCurrentChapter(c=>c-1)} style={{padding:"10px 24px",borderRadius:8,background:"rgba(255,255,255,0.08)",border:"0.5px solid rgba(255,255,255,0.15)",color:"#fff",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>← Chapter {currentChapter-1}</button>}
-              {currentChapter<totalChapters&&<button onClick={()=>{setCurrentChapter(c=>c+1);window.scrollTo(0,0);}} style={{padding:"10px 24px",borderRadius:8,background:`linear-gradient(135deg,${C.purple},${C.pink})`,border:"none",color:"#fff",fontSize:13,cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Chapter {currentChapter+1} →</button>}
+              {currentChapter<totalChapters&&<button onClick={()=>{setCurrentChapter(c=>c+1);containerRef.current?.scrollTo(0,0);}} style={{padding:"10px 24px",borderRadius:8,background:`linear-gradient(135deg,${C.purple},${C.pink})`,border:"none",color:"#fff",fontSize:13,cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Chapter {currentChapter+1} →</button>}
               {currentChapter===totalChapters&&<button onClick={onBack} style={{padding:"10px 24px",borderRadius:8,background:`linear-gradient(135deg,${C.teal},${C.blue})`,border:"none",color:"#fff",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>✓ Series complete</button>}
             </div>
           </div>
@@ -330,10 +494,14 @@ const MangaReader = ({ story, onBack, panelImages }) => {
             if (!panel) return null;
             const mood = getMood(panel.scene + " " + panel.mood);
             const palette = MOOD_PALETTES[mood];
+            const imgSrc = panel.image
+              ? (panel.image.startsWith("data:") ? panel.image : "data:image/png;base64,"+panel.image)
+              : null;
             return (
               <div style={{width:"100%",maxWidth:680,position:"relative"}}>
-                <div style={{minHeight:500,background:`linear-gradient(160deg,${palette.bg} 0%,#111 100%)`,position:"relative",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <div style={{position:"absolute",inset:0,background:`radial-gradient(ellipse at center,${palette.accent}88 0%,transparent 60%)`}}/>
+                <div style={{minHeight:imgSrc?undefined:500,background:imgSrc?"#0a0a0a":`linear-gradient(160deg,${palette.bg} 0%,#111 100%)`,position:"relative",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {imgSrc&&<img src={imgSrc} alt={`Panel ${panel.number}`} style={{width:"100%",display:"block",filter:monoFilter}}/>}
+                  {!imgSrc&&<div style={{position:"absolute",inset:0,background:`radial-gradient(ellipse at center,${palette.accent}88 0%,transparent 60%)`}}/>}
                   {((panel.dialogue||[]).filter(d=>d.type==="narration").length>0 || (thoughtStyle==="caption" && (panel.dialogue||[]).filter(d=>d.type==="thought").length>0))&&(
                     <div style={{position:"absolute",top:8,left:8,right:8,zIndex:11,display:"flex",flexDirection:"column",alignItems:"flex-start",gap:5}}>
                       {(panel.dialogue||[]).filter(d=>d.type==="narration").map((d,i)=>(
@@ -349,23 +517,34 @@ const MangaReader = ({ story, onBack, panelImages }) => {
                     </div>
                   )}
                   {(()=>{
-                    const dialogue=(panel.dialogue||[]).filter(d=>d.type==="speech" || (thoughtStyle==="bubble" && d.type==="thought"));
-                    const BPOS=[{top:"12%",left:"8%"},{top:"12%",right:"8%"},{bottom:"18%",left:"8%"},{bottom:"18%",right:"8%"}];
-                    return dialogue.slice(0,4).map((d,si)=>{
-                      const pos=BPOS[si%BPOS.length];
+                    const dialogue=(panel.dialogue||[]).filter(d=>d.type==="speech" || (thoughtStyle==="bubble" && d.type==="thought")).slice(0,4);
+                    const n = dialogue.length;
+                    const speakers = [...new Set(dialogue.map(b=>(b.character||"").toLowerCase()).filter(Boolean))];
+                    const sideFor = (name) => {
+                      const k=(name||"").toLowerCase();
+                      if (speakers.length<=1 || !k) return { left:"50%", transform:"translateX(-50%)" };
+                      return speakers.indexOf(k)%2===0 ? { left:"5%" } : { right:"5%" };
+                    };
+                    const TOP=8, BOTTOM=90, GAP=4;
+                    const band = (BOTTOM - TOP - GAP*(n-1))/n;
+                    return dialogue.map((d,si)=>{
                       const isVillain=/villain|antagonist|enemy|evil/i.test(d.character||"");
                       const isThought=d.type==="thought";
-                      const bg=isVillain?"rgba(15,0,10,0.95)":"rgba(255,255,255,0.96)";
-                      const tc=isVillain?"#ffccee":"#111";
-                      const bc=isVillain?"#e84393":"rgba(0,0,0,0.2)";
+                      const bg=isVillain?"#1a0010":(isThought?"#fbfaff":"#ffffff");
+                      const tc=isVillain?"#ffd9ec":"#0a0a0a";
+                      const bc=isVillain?"#e84393":(isThought?"#7c5cff":"#111111");
+                      const side=sideFor(d.character);
+                      const badgeRight=side.right!==undefined;
+                      const top = n===1 ? "16%" : `${TOP + si*(band+GAP)}%`;
                       return (
-                        <div key={si} style={{position:"absolute",zIndex:10,...pos,maxWidth:"38%"}}>
-                          <div style={{position:"relative",display:"inline-block"}}>
-                            <div style={{background:bg,border:`1.5px solid ${bc}`,borderRadius:isThought?"40%/35%":"999px",padding:"5px 11px",boxShadow:"0 2px 10px rgba(0,0,0,0.6)",maxWidth:"100%"}}>
-                              {d.character&&<div style={{fontSize:9,fontWeight:700,color:tc,opacity:0.6,marginBottom:2}}>{isThought?`${d.character} (thinking)`:d.character}</div>}
-                              <div style={{fontSize:11,color:tc,lineHeight:1.4,fontWeight:600,fontFamily:"'DM Sans',Arial,sans-serif",textAlign:"center",fontStyle:isThought?"italic":"normal"}}>{d.text}</div>
+                        <div key={si} style={{position:"absolute",zIndex:10,top,...side,minWidth:110,maxWidth:"58%"}}>
+                          <div style={{position:"relative"}}>
+                            {n>1 && <span style={{position:"absolute",top:-9,[badgeRight?"right":"left"]:-9,width:19,height:19,borderRadius:"50%",background:"#111",color:"#fff",fontSize:11,lineHeight:"19px",textAlign:"center",fontWeight:700,zIndex:2,boxShadow:"0 1px 3px rgba(0,0,0,0.5)"}}>{si+1}</span>}
+                            <div style={{background:bg,border:`2.5px solid ${bc}`,borderRadius:isThought?"46%/40%":"20px",padding:"8px 14px",boxShadow:"0 0 0 3px rgba(255,255,255,0.85), 0 3px 12px rgba(0,0,0,0.55)",textAlign:"center"}}>
+                              {d.character&&<div style={{fontSize:10.5,fontWeight:800,color:isVillain?"#ff9ecb":(isThought?"#6d28d9":"#444"),textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3,lineHeight:1.2}}>{isThought?`${d.character} · thinking`:d.character}</div>}
+                              <div style={{fontSize:"clamp(14px,3.2vw,16px)",color:tc,lineHeight:1.35,fontWeight:700,fontFamily:"'DM Sans',Arial,sans-serif",textAlign:"center",wordBreak:"break-word",fontStyle:isThought?"italic":"normal"}}>{d.text}</div>
                             </div>
-                            {!isThought&&<div style={{position:"absolute",bottom:-7,left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"5px solid transparent",borderRight:"5px solid transparent",borderTop:`7px solid ${bg}`}}/>}
+                            {isThought&&<div style={{position:"absolute",bottom:-13,left:16,display:"flex",flexDirection:"column",gap:2}}>{[5,3,2].map((s,ti)=><div key={ti} style={{width:s,height:s,borderRadius:"50%",background:bg,border:`1px solid ${bc}`}}/>)}</div>}
                           </div>
                         </div>
                       );
