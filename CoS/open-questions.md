@@ -2,6 +2,18 @@
 
 _Mr. K keeps this current. Resolved questions move to `decisions-log.md`._
 
+## ▶️ RESUME HERE (paused 2026-09-18 — founder hit token limit until Sunday)
+
+**Deploy is unfinished.** All session work is committed locally (`5c517a8` on `main`); backup branch
+`backup-pre-reconcile-2026-09-18` holds the pre-reconcile state. Production still runs an OLD GitHub commit,
+so Mr. K + this session's fixes are NOT live yet. The sandbox blocked the last two git steps — the founder
+runs them (from the project folder):
+1. `git merge -s ours origin/main -m "Merge origin/main: local tree supersedes earlier fal/eleven/claude commits"`
+2. `git push origin main`  → Vercel auto-deploys.
+Then verify `https://mangaverse-deploy.vercel.app/api/synthesis` returns JSON (not the SPA HTML).
+Reminder: `SUPABASE_SERVICE_ROLE_KEY` is already set in Vercel (for the weekly cron). SQL for cos_inbox +
+cos_daily_logs is already run. Fal funding still the demo blocker.
+
 ## Blocking
 
 - **Fund the providers before a tester round?** Fal (~$30–50) + Anthropic (~$15–25). Until then the demo
