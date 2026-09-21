@@ -118,7 +118,7 @@ export default function MangaMultiVerse() {
   useEffect(() => {
     setApiToken(auth?.token && auth.token !== "demo" ? auth.token : null, (b) => {
       if (typeof b === "number") setAuth(prev => prev ? { ...prev, user: { ...prev.user, credits: b } } : prev);
-      else if (b === "out_of_credits") setToast({ msg: "You're out of credits.", type: "warn" });
+      else if (b === "out_of_credits") setToast({ msg: "You've reached your limit for now — please try again later.", type: "warn" });
       else if (b === "demo_limit") setToast({ msg: "You've hit today's demo limit — thanks for trying it! Full access is coming when we launch.", type: "warn" });
       else if (b === "auth") { setToast({ msg: "Please sign in to continue.", type: "warn" }); setShowAuth(true); }
     });
@@ -443,7 +443,7 @@ export default function MangaMultiVerse() {
                     </div>
                     <div style={{padding:"26px 14px 14px"}}>
                       <div style={{fontSize:13,fontWeight:600,color:C.text}}>{auth.user.username}</div>
-                      <div style={{fontSize:10,color:(auth.user.credits??840)<50?"#e0533d":C.muted,marginBottom:10}}>Creator · {auth.user.credits??840} AI credits{(auth.user.credits??840)<50?" · running low":""}</div>
+                      <div style={{fontSize:10,color:C.muted,marginBottom:10}}>Creator</div>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:12}}>
                         {[["Series",db.stories.length],["Reading",readingList.length],["Done",readingList.filter(r=>r.status==="completed").length]].map(([l,v])=>(
                           <div key={l} style={{textAlign:"center",background:C.surf,borderRadius:7,padding:"8px 4px"}}>

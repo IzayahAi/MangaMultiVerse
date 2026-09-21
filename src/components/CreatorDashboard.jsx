@@ -174,7 +174,7 @@ const CreatorDashboard = ({ auth, db, published, onShowAuth, onGoStudio, onViewS
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
         <div>
           <div style={{fontSize:16,fontWeight:700,fontFamily:"'Cinzel',serif",marginBottom:2}}>Creator portal</div>
-          <div style={{fontSize:12,color:C.muted}}>Welcome back, {auth.user.username} · {auth.user.credits||840} AI credits</div>
+          <div style={{fontSize:12,color:C.muted}}>Welcome back, {auth.user.username}</div>
         </div>
         <div style={{display:"flex",gap:8}}>
           <Btn v="soft" onClick={onGoStudio}>✦ AI studio</Btn>
@@ -191,8 +191,8 @@ const CreatorDashboard = ({ auth, db, published, onShowAuth, onGoStudio, onViewS
 
       {creatorTab==="dashboard"&&(
         <div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:24}}>
-            {[["Total series",db.stories.length],["Published",published.length],["Drafts",db.stories.filter(s=>s.status==="draft").length],["AI credits",auth.user.credits||840]].map(([l,v])=>(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:24}}>
+            {[["Total series",db.stories.length],["Published",published.length],["Drafts",db.stories.filter(s=>s.status==="draft").length]].map(([l,v])=>(
               <div key={l} style={{background:C.surf,borderRadius:9,padding:"14px 16px",border:`0.5px solid ${C.border}`}}>
                 <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{l}</div>
                 <div style={{fontSize:22,fontWeight:500}}>{v}</div>

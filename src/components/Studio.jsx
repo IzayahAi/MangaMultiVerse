@@ -167,10 +167,6 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
       setToast({ msg: `Demo limit: ${DEMO_MAX_STORIES} stories max (up to ${DEMO_MAX_CHAPTERS} chapters each). Add chapters to what you've made — full access opens at launch.`, type: "warn" });
       return;
     }
-    if (user && (credits ?? 0) < 4) {
-      setToast({msg:"Not enough credits — you need 4 to generate a story.",type:"err"});
-      return;
-    }
     setStep("gen"); setStory(null); setScript(null); setCb(null);
     setVoices(null); setTranslation(null);
     const emoji = rndEmoji(); const cover_color = rndCover();
