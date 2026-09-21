@@ -26,6 +26,7 @@ export const CONTROL_ROOM = [
   { id: "mrk",    name: "Mr. K",        icon: "🎩", role: "Chief of Staff", blurb: "Strategic thinking partner — tracks the critical path and weekly synthesis.", dashTab: "mrk" },
   { id: "brains", name: "Story Brains", icon: "🧠", role: "Continuity",     blurb: "Per-series bible — keeps a story coherent across chapters.",                 dashTab: "brains" },
   { id: "ops",    name: "Ops Brain",    icon: "◈",  role: "Platform",       blurb: "Platform-level operations brain.",                                           dashTab: "ops" },
+  { id: "erragent", name: "Error Agent", icon: "🩺", role: "Reliability",    blurb: "Reads the error log, clusters failures, and triages what's breaking and why.", dashTab: "erragent" },
 ];
 
 export const AGENTS = [...LINE, ...CONTROL_ROOM];
