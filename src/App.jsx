@@ -11,6 +11,7 @@ import Studio from "./components/Studio.jsx";
 import CreatorDashboard from "./components/CreatorDashboard.jsx";
 import MangaReader from "./components/MangaReader.jsx";
 import AdminDashboard from "./components/AdminDashboard.jsx";
+import AgentsPage from "./components/AgentsPage.jsx";
 
 export default function MangaMultiVerse() {
   const C = useTheme();
@@ -194,6 +195,7 @@ export default function MangaMultiVerse() {
     {id:"library",label:t("nav.library")},
     {id:"studio",label:t("nav.studio")},
     {id:"creator",label:t("nav.creator")},
+    ...(auth?.user?.role==="admin" ? [{id:"agents",label:"✦ Agents"}] : []),
     ...(auth?.user ? [{id:"dashboard",label:"⬡ Dashboard"}] : []),
   ];
 
@@ -612,6 +614,7 @@ export default function MangaMultiVerse() {
         {page==="studio"&&<Studio user={auth?.user} credits={auth?.user?.credits} onUseCredits={onUseCredits} drafts={db.stories.filter(s=>s.status==="draft")} myStoryCount={db.stories.length} onSave={onSaveStory} onSaveTranslations={async (storyId, map)=>{ for (const [lang,data] of Object.entries(map||{})) await saveTranslation(storyId, lang, data, auth?.token); }} onSaveChapter={async (storyId, number, script, status)=>saveChapter(storyId, number, script, status, auth?.token)} onDeleteChapter={async (storyId, number)=>deleteChapter(storyId, number, auth?.token)} onSaveBible={async (storyId, data, prefs)=>saveBible(storyId, data, prefs, auth?.token)} onRequestAuth={()=>setShowAuth(true)} editStory={editStory} onEditConsumed={()=>setEditStory(null)} onPublished={()=>{ refreshPublic(); setDashTab("feed"); go("home"); }}/>}
 
         {page==="dashboard"&&auth?.user&&<AdminDashboard auth={auth} published={published} db={db} onOpenStory={onEditStory} onModerated={refreshPublic}/>}
+        {page==="agents"&&auth?.user?.role==="admin"&&<AgentsPage/>}
 
         {page==="creator"&&(
           <CreatorDashboard
