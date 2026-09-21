@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useTheme } from "../ThemeContext.jsx";
 import { askClaude, generatePanelImage, AGENT_STEP1, AGENT_STEP2, AGENT_STEP3, AGENT_STEP4, P_SCRIPT } from "../lib/claude.js";
 import { Btn, Spinner, Tag } from "./UI.jsx";
+import { LINE } from "../lib/agents.js";
+import FactoryMap from "./FactoryMap.jsx";
 
 const STYLES = ["PRISMA","JP-EN","KR-EN","CN-EN","US-EN","GL-EN"];
 const MOODS  = ["dramatic","action","romance","mystery","horror","default"];
@@ -545,21 +547,11 @@ function Row({label, val, C}) {
 }
 
 // ─── Main AgentsPage ──────────────────────────────────────────────────────────
-// Ordered as the production line: idea → story → script → cast/voice → art.
-// Each station also runs in-line inside Studio; this is the standalone bench.
-const AGENTS = [
-  { id:"prompts", label:"✦ Prompt Agent",  desc:"Generate batches of original story seeds with hooks and tags", stage:"Ideation" },
-  { id:"story",   label:"📖 Story Agent",  desc:"Build a full story concept — cast, world, and arc — from one idea", stage:"Story" },
-  { id:"script",  label:"📝 Script Agent", desc:"Turn a story into a paneled Chapter 1 script", stage:"Script" },
-  { id:"voice",   label:"🎭 Voice Agent",  desc:"Build a character's full voice profile and sample dialogue", stage:"Cast & Voice" },
-  { id:"panels",  label:"🎨 Panel Agent",  desc:"Generate manga panel images from any scene description", stage:"Art" },
-];
-
 export default function AgentsPage() {
   const C = useTheme();
   const [active, setActive] = useState("story");
   const [benchStory, setBenchStory] = useState(null);   // Story Agent output, handed to Script Agent
-  const agent = AGENTS.find(a => a.id === active);
+  const agent = LINE.find(a => a.id === active);         // stations come from the registry
 
   return (
     <div style={{maxWidth:960,margin:"0 auto"}}>
@@ -568,23 +560,16 @@ export default function AgentsPage() {
           <div style={{width:8,height:8,borderRadius:"50%",background:`linear-gradient(135deg,${C.purple},${C.pink})`,boxShadow:`0 0 8px ${C.purple}88`}}/>
           <div style={{fontSize:11,color:C.purple,textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:500}}>Admin Agents</div>
         </div>
-        <div style={{fontSize:22,fontWeight:700,fontFamily:"'Cinzel',serif",color:C.text}}>The Factory Bench</div>
+        <div style={{fontSize:22,fontWeight:700,fontFamily:"'Cinzel',serif",color:C.text}}>The Factory Floor</div>
         <div style={{fontSize:13,color:C.muted,marginTop:4}}>Every station in the manga pipeline, runnable on its own</div>
       </div>
 
-      <div style={{display:"flex",gap:8,marginBottom:24}}>
-        {AGENTS.map((a,i)=>(
-          <button key={a.id} onClick={()=>setActive(a.id)} style={{flex:1,padding:"12px 12px",borderRadius:10,border:`0.5px solid ${active===a.id?C.purple:C.border}`,background:active===a.id?C.purple+"18":C.card,color:active===a.id?C.purple:C.muted,cursor:"pointer",fontFamily:"inherit",textAlign:"left",transition:"all .15s",position:"relative"}}>
-            <div style={{fontSize:9,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>{i+1} · {a.stage}</div>
-            <div style={{fontSize:13,fontWeight:active===a.id?600:400}}>{a.label}</div>
-          </button>
-        ))}
-      </div>
+      <FactoryMap active={active} onPick={setActive}/>
 
       <div style={{background:C.surf,border:`0.5px solid ${C.border}`,borderRadius:14,padding:24}}>
         <div style={{marginBottom:18,paddingBottom:14,borderBottom:`0.5px solid ${C.border}`}}>
-          <div style={{fontSize:16,fontWeight:600,color:C.text}}>{agent.label}</div>
-          <div style={{fontSize:12,color:C.muted,marginTop:2}}>{agent.desc}</div>
+          <div style={{fontSize:16,fontWeight:600,color:C.text}}>{agent.icon} {agent.name}</div>
+          <div style={{fontSize:12,color:C.muted,marginTop:2}}>{agent.blurb}</div>
         </div>
         {active === "prompts" && <PromptAgent/>}
         {active === "story"   && <StoryAgent onStory={setBenchStory}/>}
