@@ -64,6 +64,15 @@ export default function MaintenancePage({ token }) {
     setP1Busy(false);
   };
 
+  const [p2Busy, setP2Busy] = useState(false);
+  const [p2, setP2] = useState(null);
+  const runP2 = async () => {
+    setP2Busy(true); setP2(null);
+    const [deps, a11y] = await Promise.all([runMaintenance("deps_check", token), runMaintenance("a11y_check", token)]);
+    setP2({ deps, a11y });
+    setP2Busy(false);
+  };
+
   const waveColor = { P0: "#e24b4a", P1: C.gold, P2: C.muted };
   const statusColor = { planned: C.muted, building: C.gold, live: C.teal };
   const Dot = ({ on, label }) => (
@@ -372,6 +381,48 @@ export default function MaintenancePage({ token }) {
               <div style={{ display: "grid", gap: 8 }}>
                 {AGENTS.map(([id, name]) => {
                   const resp = p1[id];
+                  const r = resp?.ok && resp.result;
+                  const st = r?.status || (resp && !resp.ok ? "err" : "?");
+                  const col = statusColorMap[st] || C.muted;
+                  return (
+                    <div key={id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, color: C.text }}>
+                      <span style={{ width: 9, height: 9, borderRadius: "50%", background: st === "err" ? "#e24b4a" : col, flexShrink: 0 }} />
+                      <span style={{ flex: 1, fontWeight: 500 }}>{name}</span>
+                      <span style={{ color: C.muted, fontSize: 11.5 }}>{resp && !resp.ok ? (resp.error || "error") : metric(id, r)}</span>
+                      <Tag c={col}>{st}</Tag>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Wave 3 · Hygiene (P2) */}
+      {(() => {
+        const statusColorMap = { ok: C.teal, warn: C.gold, alert: "#e24b4a" };
+        const metric = (id, r) => {
+          if (!r) return "";
+          if (r.ok === false) return r.note || "error";
+          if (id === "deps") return `${r.vulnerable?.length ?? 0} vuln / ${r.depCount ?? 0} deps · ${r.backup?.stories ?? "?"} stories`;
+          if (id === "a11y") return r.failed?.length ? `missing: ${r.failed.join(", ")}` : "shell a11y ok";
+          return "";
+        };
+        const AGENTS = [["deps", "📦 Dependency & Backup"], ["a11y", "♿ Accessibility & Alt-Text"]];
+        return (
+          <div style={{ background: C.surf, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: 18, marginBottom: 22 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>Wave 3 · Hygiene <span style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginLeft: 6 }}>P2 · live</span></div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Dependency vulnerabilities (OSV) + a data-volume snapshot, and a static accessibility audit. Deps also runs on the daily cron.</div>
+              </div>
+              <Btn v="pri" onClick={runP2} disabled={p2Busy} sx={{ fontSize: 12 }}>{p2Busy ? <><Spinner size={13} /> Running…</> : "▶ Run P2 checks"}</Btn>
+            </div>
+            {p2 && (
+              <div style={{ display: "grid", gap: 8 }}>
+                {AGENTS.map(([id, name]) => {
+                  const resp = p2[id];
                   const r = resp?.ok && resp.result;
                   const st = r?.status || (resp && !resp.ok ? "err" : "?");
                   const col = statusColorMap[st] || C.muted;

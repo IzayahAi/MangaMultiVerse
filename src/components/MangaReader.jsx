@@ -435,14 +435,14 @@ const MangaReader = ({ story, onBack, panelImages, signedIn = false, reporterId 
                         return (
                           <div key={si} style={{position:"relative",background:"#0a0a0a",minHeight:src?undefined:150,...spreadCellSpan(shots.length,si)}}>
                             {src
-                              ? <img src={src} alt={`Panel ${panel.number} shot ${si+1}`} style={{width:"100%",height:"100%",objectFit:"cover",display:"block",filter:monoFilter}}/>
+                              ? <img src={src} alt={panel.scene ? `${panel.scene.slice(0,120)} (shot ${si+1})` : `Panel ${panel.number} shot ${si+1}`} style={{width:"100%",height:"100%",objectFit:"cover",display:"block",filter:monoFilter}}/>
                               : <div style={{position:"absolute",inset:0,background:`radial-gradient(ellipse at 50% 40%, ${palette.accent}66 0%, transparent 65%)`,display:"flex",alignItems:"flex-end",padding:10}}><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",fontStyle:"italic",lineHeight:1.3}}>{sc.slice(0,60)}</div></div>}
                           </div>
                         );
                       })}
                     </div>
                   ) : imgSrc ? (
-                    <img src={imgSrc} alt={`Panel ${panel.number}`} style={{width:"100%",display:"block",filter:monoFilter}}/>
+                    <img src={imgSrc} alt={panel.scene ? panel.scene.slice(0,120) : `Panel ${panel.number}`} style={{width:"100%",display:"block",filter:monoFilter}}/>
                   ) : (
                     /* No art (generation failed/pending) — a COMPACT placeholder, never a tall black void */
                     <div style={{minHeight:200,width:"100%",position:"relative",overflow:"hidden",background:`linear-gradient(160deg, ${palette.bg} 0%, #111 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:"18px"}}>
@@ -520,7 +520,7 @@ const MangaReader = ({ story, onBack, panelImages, signedIn = false, reporterId 
             return (
               <div style={{width:"100%",maxWidth:680,position:"relative"}}>
                 <div style={{minHeight:imgSrc?undefined:500,background:imgSrc?"#0a0a0a":`linear-gradient(160deg,${palette.bg} 0%,#111 100%)`,position:"relative",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  {imgSrc&&<img src={imgSrc} alt={`Panel ${panel.number}`} style={{width:"100%",display:"block",filter:monoFilter}}/>}
+                  {imgSrc&&<img src={imgSrc} alt={panel.scene ? panel.scene.slice(0,120) : `Panel ${panel.number}`} style={{width:"100%",display:"block",filter:monoFilter}}/>}
                   {!imgSrc&&<div style={{position:"absolute",inset:0,background:`radial-gradient(ellipse at center,${palette.accent}88 0%,transparent 60%)`}}/>}
                   {((panel.dialogue||[]).filter(d=>d.type==="narration").length>0 || (thoughtStyle==="caption" && (panel.dialogue||[]).filter(d=>d.type==="thought").length>0))&&(
                     <div style={{position:"absolute",top:8,left:8,right:8,zIndex:11,display:"flex",flexDirection:"column",alignItems:"flex-start",gap:5}}>

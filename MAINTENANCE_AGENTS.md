@@ -57,8 +57,8 @@ Build 7 of the 12 agents on top of this. **Status: SHIPPED (2026-09-21).**
 
 | Agent | Purpose |
 |---|---|
-| 📦 **Dependency & Backup Sentinel** | `npm audit` triaged by Claude + a restorable Supabase backup exists |
-| ♿ **Accessibility & Alt-Text Auditor** | a11y audit + vision-generated alt-text for covers/panels (reuses Catalog Scanner LLM) |
+| 📦 **Dependency & Backup Sentinel** ✅ | `npm audit` triaged by Claude + a restorable Supabase backup exists |
+| ♿ **Accessibility & Alt-Text Auditor** ✅ | a11y audit + vision-generated alt-text for covers/panels (reuses Catalog Scanner LLM) |
 
 ## Shared infra to design up front
 
@@ -120,6 +120,16 @@ the prerender decision.
   anon-readable). uptime/integrity/posture fold into the daily `cron_tick` with inbox alerts; links +
   catalog are on-demand quality audits (button-only). UI: a combined "Wave 2 · Internal health" panel.
   **Wave 2 P1: 5 of 5 shipped ✅.** Remaining: Wave 3 (P2) — Dependency & Backup, Accessibility & Alt-Text.
+
+- **2026-09-21 — Wave 3 (P2) hygiene: both shipped → ALL 12 AGENTS COMPLETE ✅.**
+  📦 `deps_check` — scans package.json deps via OSV.dev (free, no auth) + a key-table row-count snapshot
+  (backup-adjacent; true PITR is a Supabase dashboard setting). **First real catch: flagged `vite@5.1.0`
+  with 16 known vulns — a genuine bump-me finding.** Folded into the daily `cron_tick` with an inbox alert.
+  ♿ `a11y_check` — static shell audit (lang/title/viewport/description/theme-color/charset); flagged a
+  missing `theme-color` (fixed in index.html). Also improved MangaReader to use each panel's `scene` text
+  as descriptive `alt` (free — the text is already generated; vision-alt for scene-less panels is a future
+  cost-bearing follow-up). Button-only. No new tables (reuse `health_events`).
+  **Maintenance wing: 12 of 12 agents live across P0/P1/P2. Open follow-up: bump `vite` (16 OSV vulns).**
 
 ---
 _Source: synthesized from a 3-desk planning pass (Reliability, Growth/SEO, Cost/Data/Security)._

@@ -43,8 +43,8 @@ export const MAINTENANCE = [
   { id: "catalog",   name: "Catalog Health Scanner",   icon: "📚", wave: "P1", status: "live",    blurb: "Scores published stories (stubs, generic titles, thin taglines)." },
   { id: "integrity", name: "Data-Integrity Checker",   icon: "🧬", wave: "P1", status: "live",    blurb: "Orphaned translations/bibles + stories over the language cap." },
   { id: "posture",   name: "Security Posture Auditor", icon: "🛡️", wave: "P1", status: "live",    blurb: "No secret leaks in the bundle + admin tables not anon-readable." },
-  { id: "deps",      name: "Dependency & Backup",      icon: "📦", wave: "P2", status: "planned", blurb: "npm audit triaged by Claude + a restorable Supabase backup exists." },
-  { id: "a11y",      name: "Accessibility & Alt-Text", icon: "♿", wave: "P2", status: "planned", blurb: "a11y audit + vision-generated alt-text for covers/panels." },
+  { id: "deps",      name: "Dependency & Backup",      icon: "📦", wave: "P2", status: "live",    blurb: "OSV vulnerability scan of deps + a key-table row-count snapshot." },
+  { id: "a11y",      name: "Accessibility & Alt-Text", icon: "♿", wave: "P2", status: "live",    blurb: "Static shell a11y audit; panel images use scene text as alt." },
 ];
 
 export const AGENTS = [...LINE, ...CONTROL_ROOM];

@@ -100,6 +100,17 @@ async function svcJson(path) {
   try { const resp = await r; return resp.ok ? await resp.json() : []; } catch { return []; }
 }
 
+// Exact row count via PostgREST's Content-Range (no rows pulled). null = not armed / error.
+async function svcCount(table) {
+  if (!SB_SERVICE || !SB_URL) return null;
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${table}?select=id`, { headers: { apikey: SB_SERVICE, Authorization: `Bearer ${SB_SERVICE}`, Prefer: "count=exact", Range: "0-0" } });
+    const cr = r.headers.get("content-range") || "";
+    const n = cr.split("/")[1];
+    return n && n !== "*" ? Number(n) : null;
+  } catch { return null; }
+}
+
 // The prod base URL to probe: an explicit PROD_URL, else this deployment (VERCEL_URL), else the known
 // production domain. Post-deploy the cron runs ON the new deployment, so VERCEL_URL verifies THAT build.
 function prodBase() {
@@ -495,6 +506,61 @@ const CHECKS = {
     return { armed: true, status, bundleLeaks: realLeaks, rlsLeaks, scanned: adminTables.length, alerted };
   },
 
+  // ── WAVE 3 (P2) — hygiene / fast-follows ─────────────────────────────────────────────────────────
+
+  // 📦 Dependency & Backup — (1) scan dependencies for known vulnerabilities via OSV.dev (free, no auth),
+  // and (2) snapshot key-table row counts as a data-present / loss signal (a lightweight backup-adjacent
+  // check; true Supabase PITR is a dashboard setting). Reads package.json from the public repo.
+  async deps_check(_params, ctx = {}) {
+    const repo = process.env.GITHUB_REPO || "IzayahAi/MangaMultiVerse";
+    let deps = [];
+    try {
+      const pkg = await (await fetch(`https://raw.githubusercontent.com/${repo}/main/package.json`)).json();
+      const all = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+      deps = Object.entries(all).map(([name, range]) => ({ name, version: String(range).replace(/^[\^~>=<\s]+/, "").split(" ")[0] }));
+    } catch (e) { return { armed: true, ok: false, note: "Couldn't read package.json: " + e.message }; }
+
+    let vulnerable = [];
+    try {
+      const q = { queries: deps.map((d) => ({ package: { name: d.name, ecosystem: "npm" }, version: d.version })) };
+      const r = await fetch("https://api.osv.dev/v1/querybatch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(q) });
+      const data = await r.json();
+      (data.results || []).forEach((res, i) => { const vulns = res.vulns || []; if (vulns.length) vulnerable.push({ name: deps[i].name, version: deps[i].version, count: vulns.length, ids: vulns.slice(0, 5).map((v) => v.id) }); });
+    } catch (e) { return { armed: true, ok: false, note: "OSV query failed: " + e.message, depCount: deps.length }; }
+
+    const [stories, translations, profiles] = await Promise.all([svcCount("stories"), svcCount("translations"), svcCount("profiles")]);
+    const backup = { stories, translations, profiles, note: "row-count snapshot; enable Supabase PITR in the dashboard for true restores" };
+
+    const status = vulnerable.length ? "alert" : "ok";
+    await logHealth("deps", status, vulnerable.length, { vulnerable, depCount: deps.length, backup });
+    let alerted = false;
+    if (ctx.actor === "cron" && status !== "ok") {
+      alerted = await alertInbox(`📦 Dependency Sentinel (ALERT): ${vulnerable.length} vulnerable package(s) — ${vulnerable.map((v) => `${v.name}@${v.version}`).join(", ")}.`);
+    }
+    return { armed: true, status, depCount: deps.length, vulnerable, backup, alerted };
+  },
+
+  // ♿ Accessibility & Alt-Text — static a11y audit of the served shell (lang, title, viewport, meta) and
+  // an alt-text note. Panel images render their `scene` description as alt (MangaReader), so alt coverage
+  // tracks the presence of scene text, which is generated for every panel — no vision spend needed.
+  async a11y_check(_params, _ctx = {}) {
+    const base = prodBase();
+    let html = "";
+    try { html = await (await fetch(`${base}/`)).text(); } catch (e) { return { armed: true, ok: false, note: "Couldn't fetch the app shell: " + e.message }; }
+    const checks = {
+      htmlLang: /<html[^>]*\slang=/i.test(html),
+      title: /<title>[^<]*[^\s<][^<]*<\/title>/i.test(html),
+      viewport: /<meta[^>]*name=["']viewport["']/i.test(html),
+      description: /<meta[^>]*name=["']description["']/i.test(html),
+      themeColor: /<meta[^>]*name=["']theme-color["']/i.test(html),
+      charset: /<meta[^>]*charset=/i.test(html),
+    };
+    const failed = Object.entries(checks).filter(([, v]) => !v).map(([k]) => k);
+    const status = failed.length === 0 ? "ok" : failed.length <= 2 ? "warn" : "alert";
+    await logHealth("a11y", status, failed.length, { checks, failed });
+    return { armed: true, status, checks, failed, altText: "Panel images use panel.scene as descriptive alt (MangaReader). Images with no scene fall back to 'Panel N' — vision-generated alt for those is a future, cost-bearing follow-up." };
+  },
+
   // Consolidated cron entry — runs every maintenance check that should fire unattended, in one call, so
   // the whole wing needs only ONE daily cron (Hobby plans cap crons at 2 total / once-daily). Each check
   // still alerts Mr. K's inbox on its own when the actor is cron. On-demand checks use their own buttons.
@@ -502,7 +568,7 @@ const CHECKS = {
     const run = (name) => CHECKS[name](params, ctx).catch((e) => ({ error: e.message }));
     // The unattended set: money, prod, security, data, discovery. links_check + catalog_check are
     // on-demand quality audits (button-only) — not urgent and not worth a daily inbox nudge.
-    const names = ["spend_summary", "deploy_check", "tamper_watch", "uptime_check", "integrity_check", "posture_check", "discovery_check", "seo_audit"];
+    const names = ["spend_summary", "deploy_check", "tamper_watch", "uptime_check", "integrity_check", "posture_check", "deps_check", "discovery_check", "seo_audit"];
     const out = {};
     const results = await Promise.all(names.map(run));
     names.forEach((n, i) => { out[n] = results[i]; });
