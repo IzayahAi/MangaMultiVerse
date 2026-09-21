@@ -7,6 +7,7 @@ import ErrorsPage from "./ErrorsPage.jsx";
 import AgentsPage from "./AgentsPage.jsx";
 import ModerationPage from "./ModerationPage.jsx";
 import MrKPage from "./MrKPage.jsx";
+import TodoList from "./TodoList.jsx";
 
 // One home for everything that used to be its own top-nav tab — Story Brains, the Ops Brain, AI Agents,
 // and Errors — behind a left sidebar, like a real admin console. Sections gate by role.
@@ -52,6 +53,7 @@ export default function AdminDashboard({ auth, published = [], db, onOpenStory, 
           </div>
         ))}
       </div>
+      <TodoList userKey={auth?.user?.username || auth?.user?.id || "me"} />
       <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Jump to</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {NAV.flatMap(g => g.items).filter(i => i.id !== "overview").map(i => (
