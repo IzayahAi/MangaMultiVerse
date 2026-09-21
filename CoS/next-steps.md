@@ -1,6 +1,6 @@
 # Next Steps — MangaMultiVerse
 
-_Mr. K's action backlog. Newest priorities at top. Last updated 2026-09-20._
+_Mr. K's action backlog. Newest priorities at top. Last updated 2026-09-21._
 
 ## 🔴 Blocker (owner: founder)
 
@@ -20,7 +20,9 @@ _Mr. K's action backlog. Newest priorities at top. Last updated 2026-09-20._
 
 ## 🟡 Security hardening (deferred from the 2026-09-18 session — none blocking)
 
-- [ ] **gitleaks pre-commit hook** — secret scanning so a key can never be committed again. ~10 min.
+- [x] **gitleaks pre-commit hook** — shipped 2026-09-20 (`14663e9`): `scripts/hooks/pre-commit` runs
+      `gitleaks protect --staged` + `.github/workflows/gitleaks.yml` CI backstop. One-time local setup
+      (install binary + `git config core.hooksPath scripts/hooks`) is documented in `CLAUDE.md`.
 - [ ] **Make the repo private** — optional now that all keys are revoked/rotated.
 
 ## 🟢 Mr. K system (from the 2026-09-20 deploy session)
@@ -28,13 +30,14 @@ _Mr. K's action backlog. Newest priorities at top. Last updated 2026-09-20._
 - [x] Mr. K live in production — `/api/synthesis` returns 200; weekly cron active (Mondays 14:00 UTC).
 - [x] Session-end daily logging made mandatory in repo + workspace CLAUDE.md.
 - [x] Backfilled last-14-days daily logs from saved sessions (5 entries, 09-04 → 09-20).
-- [ ] **Decide: widen the synthesis window?** `api/synthesis.js:45` reads only the last 14 days
-      (`14 * 864e5`). The 09-04 and 09-05 backfill entries fall outside it, so the weekly cron won't see
-      them. Bump to 21 or 30 days if you want deeper history to influence synthesis. One-line change + redeploy.
+- [x] **Synthesis window widened to 30 days** — shipped 2026-09-20 (`4d87d87`). `api/synthesis.js:45`
+      now reads `30 * 864e5`, so the 09-04/09-05 backfill entries are within range and the weekly cron
+      sees the full history.
 
 ## 🔵 Portfolio / personal (from the 2026-09-04 session)
 
-- [ ] **LinkedIn Featured card** — needs OG tags + a redeploy; `og.png` is already in `public/`. ~10 min.
+- [~] **LinkedIn Featured card** — DECLINED 2026-09-21. Founder is not making the demo public, so a public
+      share card is out of scope. OG tags + `og.png` stay unshipped. Revisit only if the project goes public.
 
 ## 🔭 Vision (captured, not scheduled)
 

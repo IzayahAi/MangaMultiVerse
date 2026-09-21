@@ -2,6 +2,20 @@
 
 _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
+## 2026-09-21
+
+- **Reconciled the CoS tracking docs against git.** The 09-18 "deploy unfinished / RESUME HERE" block in
+  `open-questions.md` was stale — the merge + push landed 09-20 (`2159adc`), local `main` == `origin/main`,
+  and prod `/api/synthesis` returns JSON. Marked done in `next-steps.md`: gitleaks pre-commit hook + CI
+  backstop (`14663e9`) and the synthesis window widened to 30 days (`4d87d87`, `api/synthesis.js:45`).
+  Cleared the resolved "Mr. K full port (Phases 2–4)?" question (all phases shipped 09-18). Trigger: the
+  live weekly synthesis flagged collapsed logging discipline — this closes the gap between code and docs.
+  Single remaining blocker to a tester round is unchanged: fund the providers (Fal + Anthropic). — Mr. K
+
+- **LinkedIn Featured card declined — demo stays private.** Founder: "im not trying to make the demo
+  public." The OG-tags + share-card task is out of scope; parked in `next-steps.md`, not deleted, in case
+  the project goes public later. No public-sharing work is queued. — Mr. K
+
 ## 2026-09-18
 
 - **Mr. K Phase 4 (scheduled synthesis) shipped — Mr. K is now complete (Phases 1–4).** `api/synthesis.js`
