@@ -60,9 +60,12 @@ export default async function handler(req, res) {
     `<meta name="twitter:description" content="${esc(desc)}">`,
   ].join("\n    ");
 
-  // Drop the shell's existing <title> so ours wins, then inject the meta block before </head>.
+  // Drop the shell's existing <title>, <meta name="description">, and any og:/twitter: tags so ours are
+  // the only ones the crawler sees, then inject the per-story block before </head>.
   const injected = html
     .replace(/<title>[\s\S]*?<\/title>/i, "")
+    .replace(/<meta\s+name=["']description["'][^>]*>/gi, "")
+    .replace(/<meta\s+(?:property|name)=["'](?:og:[^"']*|twitter:[^"']*)["'][^>]*>/gi, "")
     .replace(/<\/head>/i, `    ${meta}\n  </head>`);
   return res.status(200).send(injected);
 }
