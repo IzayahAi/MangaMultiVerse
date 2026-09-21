@@ -4,6 +4,15 @@ _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
 ## 2026-09-21
 
+- **Armed the launch (kept off) + wrote `LAUNCH.md`.** Founder: "arm the launch with fal ready but if not
+  we have together to fall back on." Traced the full path: the launch gate is genuinely one-switch
+  (`RELEASE_MODE` server + `VITE_RELEASE_MODE` client, both env, + redeploy), and the Fal→Together image
+  fallback is already built and robust (`src/lib/claude.js` ~L597–711; Fal primary w/ 60s circuit breaker,
+  Together auto-fallback) — no code change needed. Wrote `LAUNCH.md` as the mechanical flip runbook. The one
+  hard blocker is founder-only: run `db/spend_credits.sql` in Supabase, or a flipped gate 500s every paid
+  action. Flagged a pre-public hole: the initial credit grant is a client insert (`supabase.js:330`), so
+  harden to a server-side signup trigger before opening to untrusted users. Gate stays OFF (demo private). — Mr. K
+
 - **Reconciled the CoS tracking docs against git.** The 09-18 "deploy unfinished / RESUME HERE" block in
   `open-questions.md` was stale — the merge + push landed 09-20 (`2159adc`), local `main` == `origin/main`,
   and prod `/api/synthesis` returns JSON. Marked done in `next-steps.md`: gitleaks pre-commit hook + CI

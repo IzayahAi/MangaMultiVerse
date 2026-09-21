@@ -10,10 +10,18 @@ _Mr. K's action backlog. Newest priorities at top. Last updated 2026-09-21._
 
 ## 🟠 Launch prep (do before flipping to real users)
 
-- [ ] **Arm the secure credit path + flip `RELEASE_MODE`.** `db/spend_credits.sql` is coded but not run;
-      the gate is OFF (demo). Running the SQL + flipping `RELEASE_MODE` (client `src/constants.js` + server
-      `api/_pricing.js`) turns on strict auth + pricing. Also re-enables translation (`TRANSLATION_ENABLED
-      = RELEASE_MODE`). Do at launch, not before.
+- [x] **Launch armed + runbook written** (2026-09-21, `LAUNCH.md`). Verified the gate is one-switch ready:
+      two env vars (`RELEASE_MODE` server + `VITE_RELEASE_MODE` client) + redeploy. Confirmed the Fal→Together
+      image fallback is already built and robust (`src/lib/claude.js` ~L597–711) — no code needed. `LAUNCH.md`
+      has the exact flip sequence, verify curls, and rollback.
+- [ ] **FOUNDER — run `db/spend_credits.sql` in Supabase.** The one hard blocker: without it, flipping the
+      gate 500s every paid action ("Credit check failed (404)"). Claude can't run DDL. This is the single
+      step between "armed" and "flip-ready." See `LAUNCH.md`.
+- [ ] **Before flipping:** set both env vars together + redeploy (client gate is build-time). Do at launch,
+      not before.
+- [ ] **Harden before PUBLIC (not before a trusted tester round):** move the initial credit grant from the
+      client insert (`supabase.js:330`) to a server-side `handle_new_user` trigger — today a user could seed
+      their own starting balance. The atomic RPC stops over-spending, not a doctored initial grant.
 - [ ] **Close the demo credit-balance gap.** On the demo, a user can edit their own client-side credit
       balance. Not a security/key leak (the real app enforces server-side via `_guard.js` + `_pricing.js`),
       but worth knowing it's a demo-only limitation.
