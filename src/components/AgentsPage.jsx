@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTheme } from "../ThemeContext.jsx";
-import { askClaude, generatePanelImage } from "../lib/claude.js";
+import { askClaude, generatePanelImage, AGENT_STEP1, AGENT_STEP2, AGENT_STEP3, AGENT_STEP4, P_SCRIPT } from "../lib/claude.js";
 import { Btn, Spinner, Tag } from "./UI.jsx";
 
 const STYLES = ["PRISMA","JP-EN","KR-EN","CN-EN","US-EN","GL-EN"];
@@ -334,6 +334,205 @@ function PromptAgent() {
   );
 }
 
+// ─── Story Agent ──────────────────────────────────────────────────────────────
+// Standalone bench version of Studio's genStory: chains AGENT_STEP1-4 off one seed
+// into a full story concept (cast, world, arc). onStory lets the Script Agent reuse it.
+function StoryAgent({ onStory }) {
+  const C = useTheme();
+  const [seed, setSeed]   = useState("");
+  const [genre, setGenre] = useState("Dark fantasy");
+  const [tone, setTone]   = useState("Dark & gritty");
+  const [style, setStyle] = useState("JP-EN");
+  const [step, setStep]   = useState(0);     // 0 idle, 1-4 = building that stage
+  const [story, setStory] = useState(null);
+
+  const STEP_LABELS = ["", "Building the concept…", "Casting characters…", "Architecting the world…", "Structuring the arc…"];
+
+  const generate = async () => {
+    if (!seed.trim()) return;
+    setStory(null); setStep(1);
+    const s1 = await askClaude(AGENT_STEP1(seed, genre, tone, style), ()=>{});
+    if (!s1) { setStep(0); return; }
+    setStep(2); const s2 = await askClaude(AGENT_STEP2(s1), ()=>{}) || {};
+    setStep(3); const s3 = await askClaude(AGENT_STEP3(s1, s2), ()=>{}) || {};
+    setStep(4); const s4 = await askClaude(AGENT_STEP4(s1, s2, s3), ()=>{}) || {};
+    const merged = { ...s1, ...s2, ...s3, ...s4 };
+    setStory(merged); onStory?.(merged); setStep(0);
+  };
+
+  const inp = { width:"100%", padding:"9px 12px", borderRadius:8, border:`0.5px solid ${C.border2}`, background:C.card, color:C.text, fontSize:13, fontFamily:"inherit", outline:"none", resize:"vertical" };
+  const loading = step > 0;
+
+  return (
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,alignItems:"start"}}>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div>
+          <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:5}}>Story idea / seed</div>
+          <textarea value={seed} onChange={e=>setSeed(e.target.value)} rows={3} placeholder="A disgraced royal cartographer discovers the maps she forges are quietly rewriting the real world…" style={inp}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+          <div>
+            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:5}}>Genre</div>
+            <select value={genre} onChange={e=>setGenre(e.target.value)} style={{...inp,resize:"none",cursor:"pointer"}}>{GENRES.map(g=><option key={g}>{g}</option>)}</select>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:5}}>Tone</div>
+            <select value={tone} onChange={e=>setTone(e.target.value)} style={{...inp,resize:"none",cursor:"pointer"}}>{TONES.map(t=><option key={t}>{t}</option>)}</select>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:5}}>Style</div>
+            <select value={style} onChange={e=>setStyle(e.target.value)} style={{...inp,resize:"none",cursor:"pointer"}}>{STYLES.map(s=><option key={s}>{s}</option>)}</select>
+          </div>
+        </div>
+        <Btn v="pri" onClick={generate} disabled={loading||!seed.trim()} sx={{padding:"11px 0",fontSize:13,justifyContent:"center",width:"100%"}}>
+          {loading ? <><Spinner size={14}/> {STEP_LABELS[step]} ({step}/4)</> : "📖 Build Story Concept"}
+        </Btn>
+      </div>
+      <div>
+        {!story && !loading && (
+          <div style={{padding:24,background:C.card,border:`0.5px dashed ${C.border2}`,borderRadius:12,color:C.muted,fontSize:13,textAlign:"center"}}>Story concept appears here</div>
+        )}
+        {loading && (
+          <div style={{padding:24,background:C.card,border:`0.5px solid ${C.border}`,borderRadius:12,display:"flex",alignItems:"center",gap:12,color:C.muted}}><Spinner size={18}/>{STEP_LABELS[step]}</div>
+        )}
+        {story && (
+          <div style={{background:C.card,border:`0.5px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+            <div style={{padding:"14px 16px",borderBottom:`0.5px solid ${C.border}`,background:`linear-gradient(135deg,${C.purple}18,${C.pink}08)`}}>
+              <div style={{fontSize:16,fontWeight:700,fontFamily:"'Cinzel',serif",color:C.text}}>{story.title}</div>
+              {story.tagline && <div style={{fontSize:12,color:C.purpleL||C.purple,marginTop:3,fontStyle:"italic"}}>{story.tagline}</div>}
+              {story.genre_tags?.length > 0 && <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>{story.genre_tags.map((t,i)=><Tag key={i} c={C.teal}>{t}</Tag>)}</div>}
+            </div>
+            <div style={{padding:16,display:"flex",flexDirection:"column",gap:14}}>
+              <Row label="Logline" val={story.logline} C={C}/>
+              {story.protagonist && <Row label={`Protagonist — ${story.protagonist.name||""}`} val={[story.protagonist.personality, story.protagonist.wound && `Wound: ${story.protagonist.wound}`, story.protagonist.goal && `Wants: ${story.protagonist.goal}`].filter(Boolean).join(" · ")} C={C}/>}
+              {story.antagonist && <Row label={`Antagonist — ${story.antagonist.name||""}`} val={story.antagonist.motivation} C={C}/>}
+              {story.setting && <Row label={`World — ${story.setting.world||""}`} val={story.setting.description} C={C}/>}
+              <Row label="Central conflict" val={story.central_conflict} C={C}/>
+              {story.chapter_one_beats?.length > 0 && (
+                <div>
+                  <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Chapter 1 beats</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:4}}>{story.chapter_one_beats.map((b,i)=><div key={i} style={{fontSize:12,color:C.text,lineHeight:1.5}}>{i+1}. {b}</div>)}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Script Agent ─────────────────────────────────────────────────────────────
+// Standalone bench version of Studio's genScript: turns a story into a paneled
+// Chapter 1 via P_SCRIPT. Works from manual inputs, or loads the Story Agent's
+// full concept (the factory hand-off) for a richer script.
+function ScriptAgent({ story }) {
+  const C = useTheme();
+  const [title, setTitle]     = useState("");
+  const [premise, setPremise] = useState("");
+  const [hero, setHero]       = useState("");
+  const [panelCount, setPanelCount] = useState(8);
+  const [narrator, setNarrator]     = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult]   = useState(null);
+  const [rich, setRich]       = useState(null);   // full story object loaded from Story Agent
+
+  const loadStory = () => {
+    if (!story) return;
+    setRich(story);
+    setTitle(story.title || "");
+    setPremise(story.logline || story.chapter_one_hook || "");
+    setHero(story.protagonist?.name || "");
+  };
+  // Any manual edit drops the rich object so the typed fields drive the script.
+  const edit = (setter) => (e) => { setRich(null); setter(e.target.value); };
+
+  const generate = async () => {
+    setLoading(true); setResult(null);
+    const s = rich || { title: title || "Untitled", logline: premise, chapter_one_hook: premise, protagonist: { name: hero || "the hero" } };
+    const r = await askClaude(P_SCRIPT(s, panelCount, narrator), ()=>{});
+    setResult(r);
+    setLoading(false);
+  };
+
+  const inp = { width:"100%", padding:"9px 12px", borderRadius:8, border:`0.5px solid ${C.border2}`, background:C.card, color:C.text, fontSize:13, fontFamily:"inherit", outline:"none", resize:"vertical" };
+  const moodColor = { dramatic:C.purple, action:"#e24b4a", romance:C.pink, mystery:C.teal, horror:"#8b3a3a", default:C.muted };
+
+  return (
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,alignItems:"start"}}>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {story && (
+          <button onClick={loadStory} style={{alignSelf:"flex-start",fontSize:11,padding:"6px 12px",borderRadius:8,border:`0.5px solid ${rich?C.purple:C.border}`,background:rich?C.purple+"18":C.card,color:rich?C.purple:C.muted,cursor:"pointer",fontFamily:"inherit"}}>
+            {rich ? `✓ Using Story Agent: ${rich.title}` : "↓ Load last Story Agent result"}
+          </button>
+        )}
+        <div>
+          <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:5}}>Story title</div>
+          <input value={title} onChange={edit(setTitle)} placeholder="The Cartographer's Lie" style={inp}/>
+        </div>
+        <div>
+          <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:5}}>Premise / logline</div>
+          <textarea value={premise} onChange={edit(setPremise)} rows={3} placeholder="A royal mapmaker learns her forged maps rewrite reality — and someone is forcing her to redraw the kingdom." style={inp}/>
+        </div>
+        <div>
+          <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:5}}>Protagonist name</div>
+          <input value={hero} onChange={edit(setHero)} placeholder="Sera Vance" style={inp}/>
+        </div>
+        <div>
+          <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:5}}>Panels: {panelCount}</div>
+          <input type="range" min={4} max={12} value={panelCount} onChange={e=>setPanelCount(Number(e.target.value))} style={{width:"100%",accentColor:C.purple}}/>
+        </div>
+        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.muted,cursor:"pointer"}}>
+          <input type="checkbox" checked={narrator} onChange={e=>setNarrator(e.target.checked)} style={{accentColor:C.purple}}/>
+          Allow narration captions
+        </label>
+        <Btn v="pri" onClick={generate} disabled={loading||(!rich&&!premise.trim())} sx={{padding:"11px 0",fontSize:13,justifyContent:"center",width:"100%"}}>
+          {loading ? <><Spinner size={14}/> Writing {panelCount} panels…</> : "📝 Write Chapter 1 Script"}
+        </Btn>
+      </div>
+      <div>
+        {!result && !loading && (
+          <div style={{padding:24,background:C.card,border:`0.5px dashed ${C.border2}`,borderRadius:12,color:C.muted,fontSize:13,textAlign:"center"}}>Paneled script appears here</div>
+        )}
+        {loading && (
+          <div style={{padding:24,background:C.card,border:`0.5px solid ${C.border}`,borderRadius:12,display:"flex",alignItems:"center",gap:12,color:C.muted}}><Spinner size={18}/>Writing the chapter…</div>
+        )}
+        {result && (
+          <div style={{background:C.card,border:`0.5px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+            <div style={{padding:"14px 16px",borderBottom:`0.5px solid ${C.border}`,background:`linear-gradient(135deg,${C.purple}18,${C.pink}08)`}}>
+              <div style={{fontSize:15,fontWeight:600,color:C.text}}>{result.chapter_title || "Chapter 1"}</div>
+              {result.chapter_summary && <div style={{fontSize:12,color:C.muted,marginTop:3,lineHeight:1.5}}>{result.chapter_summary}</div>}
+            </div>
+            <div style={{padding:16,display:"flex",flexDirection:"column",gap:10,maxHeight:520,overflowY:"auto"}}>
+              {(result.panels||[]).map((p,i)=>(
+                <div key={i} style={{padding:"10px 12px",background:C.bg,borderRadius:8,border:`0.5px solid ${C.border}`}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                    <span style={{fontSize:11,fontWeight:600,color:C.muted}}>Panel {p.number||i+1}</span>
+                    {p.mood && <Tag c={moodColor[p.mood]||C.muted}>{p.mood}</Tag>}
+                  </div>
+                  {p.scene_heading && <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{p.scene_heading}</div>}
+                  <div style={{fontSize:12,color:C.text,lineHeight:1.55,marginBottom:(p.dialogue?.length?6:0)}}>{p.scene}</div>
+                  {(p.dialogue||[]).map((d,di)=>(
+                    <div key={di} style={{fontSize:12,lineHeight:1.5,marginTop:2}}>
+                      <span style={{color:C.purple,fontWeight:500}}>{d.character}{d.type&&d.type!=="speech"?` (${d.type})`:""}:</span>{" "}
+                      <span style={{color:C.text,fontStyle:d.type==="thought"?"italic":"normal"}}>{d.text}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+              {result.chapter_end_hook && (
+                <div style={{padding:"10px 14px",background:C.purple+"12",border:`0.5px solid ${C.purple}44`,borderRadius:8,fontSize:12,color:C.text,fontStyle:"italic"}}>
+                  Cliffhanger: {result.chapter_end_hook}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Shared helper ────────────────────────────────────────────────────────────
 function Row({label, val, C}) {
   if (!val) return null;
@@ -346,15 +545,20 @@ function Row({label, val, C}) {
 }
 
 // ─── Main AgentsPage ──────────────────────────────────────────────────────────
+// Ordered as the production line: idea → story → script → cast/voice → art.
+// Each station also runs in-line inside Studio; this is the standalone bench.
 const AGENTS = [
-  { id:"panels",  label:"🎨 Panel Agent",  desc:"Generate manga panel images from any scene description" },
-  { id:"voice",   label:"🎭 Voice Agent",  desc:"Build a character's full voice profile and sample dialogue" },
-  { id:"prompts", label:"✦ Prompt Agent", desc:"Generate batches of original story seeds with hooks and tags" },
+  { id:"prompts", label:"✦ Prompt Agent",  desc:"Generate batches of original story seeds with hooks and tags", stage:"Ideation" },
+  { id:"story",   label:"📖 Story Agent",  desc:"Build a full story concept — cast, world, and arc — from one idea", stage:"Story" },
+  { id:"script",  label:"📝 Script Agent", desc:"Turn a story into a paneled Chapter 1 script", stage:"Script" },
+  { id:"voice",   label:"🎭 Voice Agent",  desc:"Build a character's full voice profile and sample dialogue", stage:"Cast & Voice" },
+  { id:"panels",  label:"🎨 Panel Agent",  desc:"Generate manga panel images from any scene description", stage:"Art" },
 ];
 
 export default function AgentsPage() {
   const C = useTheme();
-  const [active, setActive] = useState("panels");
+  const [active, setActive] = useState("story");
+  const [benchStory, setBenchStory] = useState(null);   // Story Agent output, handed to Script Agent
   const agent = AGENTS.find(a => a.id === active);
 
   return (
@@ -364,15 +568,15 @@ export default function AgentsPage() {
           <div style={{width:8,height:8,borderRadius:"50%",background:`linear-gradient(135deg,${C.purple},${C.pink})`,boxShadow:`0 0 8px ${C.purple}88`}}/>
           <div style={{fontSize:11,color:C.purple,textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:500}}>Admin Agents</div>
         </div>
-        <div style={{fontSize:22,fontWeight:700,fontFamily:"'Cinzel',serif",color:C.text}}>AI Toolbelt</div>
-        <div style={{fontSize:13,color:C.muted,marginTop:4}}>Standalone tools for rapid content generation</div>
+        <div style={{fontSize:22,fontWeight:700,fontFamily:"'Cinzel',serif",color:C.text}}>The Factory Bench</div>
+        <div style={{fontSize:13,color:C.muted,marginTop:4}}>Every station in the manga pipeline, runnable on its own</div>
       </div>
 
-      <div style={{display:"flex",gap:10,marginBottom:24}}>
-        {AGENTS.map(a=>(
-          <button key={a.id} onClick={()=>setActive(a.id)} style={{flex:1,padding:"14px 16px",borderRadius:10,border:`0.5px solid ${active===a.id?C.purple:C.border}`,background:active===a.id?C.purple+"18":C.card,color:active===a.id?C.purple:C.muted,cursor:"pointer",fontFamily:"inherit",textAlign:"left",transition:"all .15s"}}>
-            <div style={{fontSize:14,fontWeight:active===a.id?600:400,marginBottom:3}}>{a.label}</div>
-            <div style={{fontSize:11,color:C.muted,lineHeight:1.4}}>{a.desc}</div>
+      <div style={{display:"flex",gap:8,marginBottom:24}}>
+        {AGENTS.map((a,i)=>(
+          <button key={a.id} onClick={()=>setActive(a.id)} style={{flex:1,padding:"12px 12px",borderRadius:10,border:`0.5px solid ${active===a.id?C.purple:C.border}`,background:active===a.id?C.purple+"18":C.card,color:active===a.id?C.purple:C.muted,cursor:"pointer",fontFamily:"inherit",textAlign:"left",transition:"all .15s",position:"relative"}}>
+            <div style={{fontSize:9,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>{i+1} · {a.stage}</div>
+            <div style={{fontSize:13,fontWeight:active===a.id?600:400}}>{a.label}</div>
           </button>
         ))}
       </div>
@@ -382,9 +586,11 @@ export default function AgentsPage() {
           <div style={{fontSize:16,fontWeight:600,color:C.text}}>{agent.label}</div>
           <div style={{fontSize:12,color:C.muted,marginTop:2}}>{agent.desc}</div>
         </div>
-        {active === "panels"  && <PanelAgent/>}
-        {active === "voice"   && <VoiceAgent/>}
         {active === "prompts" && <PromptAgent/>}
+        {active === "story"   && <StoryAgent onStory={setBenchStory}/>}
+        {active === "script"  && <ScriptAgent story={benchStory}/>}
+        {active === "voice"   && <VoiceAgent/>}
+        {active === "panels"  && <PanelAgent/>}
       </div>
     </div>
   );
