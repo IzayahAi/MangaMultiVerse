@@ -4,6 +4,17 @@ _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
 ## 2026-09-21
 
+- **Built out the agent factory + a Maintenance wing.** Completed the 5-station pipeline by adding
+  standalone Story + Script bench tools; created the agent registry (`src/lib/agents.js`) as the single
+  source of truth; built the Factory Floor map (doubles as navigator) and a top-nav Agents entry; added an
+  Overview to-do list; built the Error Agent (clusters + Claude-triages `error_log`). Then ran a 3-desk
+  planning pass (Reliability, Growth/SEO, Cost/Security) and synthesized a 12-agent maintenance roadmap
+  (`MAINTENANCE_AGENTS.md`) + started Phase 0: the secured runner `api/maintenance.js` (admin-JWT or cron
+  auth, holds service-role + provider keys, `selfcheck`) + a Maintenance control-room page. Rationale: as
+  the app grows, maintenance (spend, deploys, SEO, data/security) needs its own agents, and they need a
+  server-side runner the public anon key can't provide. First 8 commits pushed/live; Error Agent (`9a4721a`)
+  and Maintenance (`237f4e9`) committed but UNPUSHED at founder's pause. Next build: Spend Sentinel. — Mr. K
+
 - **BUG FOUND: `cos_daily_logs` anon insert is blocked by RLS (42501) — Mr. K's session-end logging has
   been silently failing.** The documented path (POST with anon key) returns
   `42501 new row violates row-level security policy`, while the sibling `cos_inbox` insert with the *same*

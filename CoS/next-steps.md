@@ -2,6 +2,18 @@
 
 _Mr. K's action backlog. Newest priorities at top. Last updated 2026-09-21._
 
+## 🟣 Pending from the 2026-09-21 build session
+
+- [ ] **Push 2 local commits** (`9a4721a` Error Agent, `237f4e9` Maintenance wing + Phase 0 runner) to
+      deploy them. Held at founder's pause. Docs+UI only; no behavior change to the demo.
+- [ ] **Arm the maintenance runner** — add `SUPABASE_SERVICE_ROLE_KEY` (already set for the synthesis cron)
+      and a new `CRON_SECRET` to Vercel env. Until then `api/maintenance.js` authorizes admins but reports
+      "not armed" and the maintenance agents can't read past RLS.
+- [ ] **Finish spend_credits** — run `NOTIFY pgrst, 'reload schema';` in Supabase (deferred). The RPC exists
+      but PostgREST hasn't cached it, so the launch gate would still 500 on paid actions if flipped.
+- [ ] **Next build:** Wave 1 P0 maintenance agents — start with 💸 **Spend Sentinel** (founder's #1 concern).
+      Full roadmap in `MAINTENANCE_AGENTS.md`.
+
 ## 🔴 Blocker (owner: founder)
 
 - [ ] **Fund the providers before a tester round.** Fal (~$30–50) + Anthropic (~$15–25). Until then the
