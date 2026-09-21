@@ -51,6 +51,19 @@ export default function MaintenancePage({ token }) {
     setDisco(d); setSeo(s); setDiscoBusy(false);
   };
 
+  const [p1Busy, setP1Busy] = useState(false);
+  const [p1, setP1] = useState(null);
+  const runP1 = async () => {
+    setP1Busy(true); setP1(null);
+    const [uptime, links, catalog, integrity, posture] = await Promise.all([
+      runMaintenance("uptime_check", token), runMaintenance("links_check", token),
+      runMaintenance("catalog_check", token), runMaintenance("integrity_check", token),
+      runMaintenance("posture_check", token),
+    ]);
+    setP1({ uptime, links, catalog, integrity, posture });
+    setP1Busy(false);
+  };
+
   const waveColor = { P0: "#e24b4a", P1: C.gold, P2: C.muted };
   const statusColor = { planned: C.muted, building: C.gold, live: C.teal };
   const Dot = ({ on, label }) => (
@@ -321,6 +334,56 @@ export default function MaintenancePage({ token }) {
                 {S.thin?.length > 0 && (
                   <div style={{ fontSize: 11.5, color: C.muted, marginTop: 8 }}>Thin meta: {S.thin.slice(0, 8).map((p) => <span key={p.id} style={{ marginRight: 10, color: C.gold }}>{p.title || p.id.slice(0, 8)}{!p.hasDesc ? " (no tagline)" : ""}</span>)}</div>
                 )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Wave 2 · Internal health (P1) */}
+      {(() => {
+        const statusColorMap = { ok: C.teal, warn: C.gold, alert: "#e24b4a" };
+        const metric = (id, r) => {
+          if (!r) return "";
+          if (r.armed === false) return "not armed";
+          switch (id) {
+            case "uptime": return `${r.live?.app?.ok && r.live?.supabase?.ok ? "prod up" : "PROD DOWN"} · synthesis ${r.synthesis?.ageDays ?? "n/a"}d`;
+            case "links": return `${r.noCover?.length ?? 0} no-cover · ${r.noArt?.length ?? 0} no-art / ${r.total ?? 0}`;
+            case "catalog": return `avg ${r.avgScore ?? "?"}/100 · ${r.total ?? 0} stories`;
+            case "integrity": return `${(r.orphanTranslations ?? 0) + (r.orphanBibles ?? 0)} orphans · ${r.overCap?.length ?? 0} over-cap`;
+            case "posture": return `${r.bundleLeaks?.length ?? 0} bundle · ${r.rlsLeaks?.length ?? 0} rls leak`;
+            default: return "";
+          }
+        };
+        const AGENTS = [
+          ["uptime", "📡 Uptime Monitor"], ["links", "🩹 Broken-Link Checker"], ["catalog", "📚 Catalog Health"],
+          ["integrity", "🧬 Data-Integrity"], ["posture", "🛡️ Security Posture"],
+        ];
+        return (
+          <div style={{ background: C.surf, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: 18, marginBottom: 22 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>Wave 2 · Internal health <span style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginLeft: 6 }}>P1 · live</span></div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Uptime, dead assets, catalog quality, data integrity, and security posture. Uptime/integrity/posture also run on the daily cron.</div>
+              </div>
+              <Btn v="pri" onClick={runP1} disabled={p1Busy} sx={{ fontSize: 12 }}>{p1Busy ? <><Spinner size={13} /> Running…</> : "▶ Run P1 checks"}</Btn>
+            </div>
+            {p1 && (
+              <div style={{ display: "grid", gap: 8 }}>
+                {AGENTS.map(([id, name]) => {
+                  const resp = p1[id];
+                  const r = resp?.ok && resp.result;
+                  const st = r?.status || (resp && !resp.ok ? "err" : "?");
+                  const col = statusColorMap[st] || C.muted;
+                  return (
+                    <div key={id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, color: C.text }}>
+                      <span style={{ width: 9, height: 9, borderRadius: "50%", background: st === "err" ? "#e24b4a" : col, flexShrink: 0 }} />
+                      <span style={{ flex: 1, fontWeight: 500 }}>{name}</span>
+                      <span style={{ color: C.muted, fontSize: 11.5 }}>{resp && !resp.ok ? (resp.error || "error") : metric(id, r)}</span>
+                      <Tag c={col}>{st}</Tag>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

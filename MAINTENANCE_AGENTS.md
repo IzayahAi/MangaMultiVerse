@@ -47,11 +47,11 @@ Build 7 of the 12 agents on top of this. **Status: SHIPPED (2026-09-21).**
 
 | Agent | Purpose |
 |---|---|
-| 📡 **Uptime & Health Monitor** | Continuous liveness of prod + 4 proxies + Supabase + synthesis freshness |
-| 🩹 **Broken-Link & Dead-Asset Checker** | Dead covers, missing chapters, orphaned Storage refs |
-| 📚 **Catalog Health & Quality Scanner** | Score published stories (stub chapters, generic titles, thin taglines) |
-| 🧬 **Data-Integrity Checker** | Orphaned/inconsistent rows (translations→missing chapters, >12-lang limit) |
-| 🛡️ **Security Posture Auditor** | RLS on for every table + no secret leaks in the bundle |
+| 📡 **Uptime & Health Monitor** ✅ | Continuous liveness of prod + 4 proxies + Supabase + synthesis freshness |
+| 🩹 **Broken-Link & Dead-Asset Checker** ✅ | Dead covers, missing chapters, orphaned Storage refs |
+| 📚 **Catalog Health & Quality Scanner** ✅ | Score published stories (stub chapters, generic titles, thin taglines) |
+| 🧬 **Data-Integrity Checker** ✅ | Orphaned/inconsistent rows (translations→missing chapters, >12-lang limit) |
+| 🛡️ **Security Posture Auditor** ✅ | RLS on for every table + no secret leaks in the bundle |
 
 ## Wave 3 — P2
 
@@ -109,6 +109,17 @@ the prerender decision.
   four paths ahead of the SPA catch-all. No new tables (reuses `health_events`); nothing for the founder
   to run. Note: the demo is private today, so this pays off when it goes public — built now to finish the
   wave. **Wave 1 P0: 5 of 5 shipped ✅.** Next up: Wave 2 (P1) internal-health agents.
+
+- **2026-09-21 — Wave 2 (P1) internal health: all 5 shipped ✅.** Five runner checks, all reading past RLS
+  with the service role, no new tables (reuse `health_events` with per-agent `kind`):
+  📡 `uptime_check` (prod + Supabase liveness + weekly-synthesis freshness), 🩹 `links_check` (published
+  stories missing a cover or rendered panel art), 📚 `catalog_check` (0–100 quality score per story:
+  title/tagline/logline/chapters/tags/cover), 🧬 `integrity_check` (orphaned translations/bibles +
+  stories over the 12-language cap), 🛡️ `posture_check` (scans the deployed JS bundle for leaked provider
+  secrets — reports pattern names + counts only, never values — and probes that admin-only tables aren't
+  anon-readable). uptime/integrity/posture fold into the daily `cron_tick` with inbox alerts; links +
+  catalog are on-demand quality audits (button-only). UI: a combined "Wave 2 · Internal health" panel.
+  **Wave 2 P1: 5 of 5 shipped ✅.** Remaining: Wave 3 (P2) — Dependency & Backup, Accessibility & Alt-Text.
 
 ---
 _Source: synthesized from a 3-desk planning pass (Reliability, Growth/SEO, Cost/Data/Security)._

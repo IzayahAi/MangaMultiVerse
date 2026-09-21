@@ -1,5 +1,5 @@
 import { corsHeaders, getToken } from "./_guard.js";
-import { BUDGET, DEMO_CREDITS } from "./_pricing.js";
+import { BUDGET, DEMO_CREDITS, LIMITS } from "./_pricing.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The secured maintenance runner (Phase 0 of the maintenance-agent roadmap).
@@ -91,6 +91,13 @@ async function logFlags(status, findings) {
       body: JSON.stringify({ status, findings }),
     });
   } catch { /* best-effort */ }
+}
+
+// Service-role JSON read (bypasses RLS). null = not armed (no service key); [] = error/empty.
+async function svcJson(path) {
+  const r = svc(path);
+  if (!r) return null;
+  try { const resp = await r; return resp.ok ? await resp.json() : []; } catch { return []; }
 }
 
 // The prod base URL to probe: an explicit PROD_URL, else this deployment (VERCEL_URL), else the known
@@ -343,18 +350,161 @@ const CHECKS = {
     return { armed: true, status, total, withMeta, coverage, thin: thin.slice(0, 50) };
   },
 
+  // ── WAVE 2 (P1) — internal health ────────────────────────────────────────────────────────────────
+
+  // 📡 Uptime Monitor — is prod live (app + Supabase) and is the weekly synthesis actually running?
+  // (Deploy Sentinel covers the per-proxy detail; this adds synthesis freshness.) Alerts on the cron.
+  async uptime_check(_params, ctx = {}) {
+    const base = prodBase();
+    const probe = async (name, url, headers) => {
+      const started = Date.now();
+      try { const r = await fetch(url, { headers: headers || {} }); return { name, ok: r.status >= 200 && r.status < 500, status: r.status, ms: Date.now() - started }; }
+      catch (e) { return { name, ok: false, status: 0, ms: Date.now() - started, error: (e.message || "fail").slice(0, 100) }; }
+    };
+    const [app, sb] = await Promise.all([
+      probe("app", `${base}/`),
+      probe("supabase", `${SB_URL}/rest/v1/`, { apikey: SB_ANON }),
+    ]);
+    // Synthesis freshness (needs the service role to read the admin-gated CoS table).
+    let synthesis = { known: false };
+    const rows = await svcJson(`/rest/v1/cos_daily_logs?source=eq.synthesis&select=log_date,created_at&order=created_at.desc&limit=1`);
+    if (rows && rows.length) {
+      const last = new Date(rows[0].created_at || rows[0].log_date).getTime();
+      const ageDays = Math.round((Date.now() - last) / 864e5);
+      synthesis = { known: true, ageDays, stale: ageDays > 8 };
+    } else if (rows) {
+      synthesis = { known: true, ageDays: null, stale: true, note: "no synthesis entry yet" };
+    }
+    const live = app.ok && sb.ok;
+    const status = !live ? "alert" : synthesis.stale ? "warn" : "ok";
+    await logHealth("uptime", status, live ? 0 : 1, [app, sb, { name: "synthesis", ...synthesis }]);
+    let alerted = false;
+    if (ctx.actor === "cron" && status !== "ok") {
+      alerted = await alertInbox(`📡 Uptime (${status.toUpperCase()}): ${!live ? "prod/Supabase unreachable" : `weekly synthesis stale (${synthesis.ageDays ?? "never"}d)`}.`);
+    }
+    return { base, status, live: { app, supabase: sb }, synthesis, alerted };
+  },
+
+  // 🩹 Broken-Link & Dead-Asset — published stories with no cover or no rendered panel art (a dead card
+  // in the feed / an empty read). Reads past RLS to see every author's catalog.
+  async links_check(_params, _ctx = {}) {
+    const stories = await svcJson(`/rest/v1/stories?status=eq.published&select=id,title,chapters,script,cover_color,emoji&limit=5000`);
+    if (stories === null) return { armed: false, note: "Add SUPABASE_SERVICE_ROLE_KEY to arm." };
+    const hasArt = (s) => {
+      const sc = s.script || {};
+      const imgs = sc.panel_images && typeof sc.panel_images === "object" ? Object.keys(sc.panel_images).length : 0;
+      const inPanels = Array.isArray(sc.panels) && sc.panels.some((p) => p && (p.image || p.img || p.url || p.image_url));
+      return imgs > 0 || inPanels;
+    };
+    const noCover = stories.filter((s) => !s.cover_color && !s.emoji).map((s) => ({ id: s.id, title: s.title || null }));
+    const noArt = stories.filter((s) => !hasArt(s)).map((s) => ({ id: s.id, title: s.title || null }));
+    const total = stories.length;
+    const broken = new Set([...noCover, ...noArt].map((x) => x.id)).size;
+    const status = broken === 0 ? "ok" : broken / (total || 1) >= 0.25 ? "alert" : "warn";
+    await logHealth("links", status, broken, { noCover: noCover.length, noArt: noArt.length });
+    return { armed: true, status, total, noCover, noArt };
+  },
+
+  // 📚 Catalog Health & Quality — score each published story on title/tagline/logline/chapters/tags/cover.
+  async catalog_check(_params, _ctx = {}) {
+    const stories = await svcJson(`/rest/v1/stories?status=eq.published&select=id,title,tagline,logline,chapters,genre_tags,cover_color,emoji&limit=5000`);
+    if (stories === null) return { armed: false, note: "Add SUPABASE_SERVICE_ROLE_KEY to arm." };
+    const generic = /^(untitled|new story|test|draft|story)\b/i;
+    const score = (s) => {
+      let n = 0;
+      if (s.title && !generic.test(s.title.trim())) n += 25;
+      if (s.tagline && s.tagline.trim().length >= 20) n += 25;
+      if (s.logline && s.logline.trim().length >= 20) n += 15;
+      if ((s.chapters || 0) >= 1) n += 15;
+      if (Array.isArray(s.genre_tags) && s.genre_tags.length) n += 10;
+      if (s.cover_color || s.emoji) n += 10;
+      return n;
+    };
+    const scored = stories.map((s) => ({ id: s.id, title: s.title || null, score: score(s) })).sort((a, b) => a.score - b.score);
+    const total = scored.length;
+    const avg = total ? Math.round(scored.reduce((a, s) => a + s.score, 0) / total) : 100;
+    const status = total === 0 ? "ok" : avg >= 70 ? "ok" : avg >= 50 ? "warn" : "alert";
+    await logHealth("catalog", status, scored.filter((s) => s.score < 50).length, { avg });
+    return { armed: true, status, total, avgScore: avg, lowest: scored.slice(0, 8) };
+  },
+
+  // 🧬 Data-Integrity — orphaned translations/bibles (story_id gone) + stories over the language cap.
+  async integrity_check(_params, _ctx = {}) {
+    const [stories, translations, bibles] = await Promise.all([
+      svcJson(`/rest/v1/stories?select=id&limit=20000`),
+      svcJson(`/rest/v1/translations?select=story_id,language&limit=20000`),
+      svcJson(`/rest/v1/story_bible?select=story_id&limit=20000`),
+    ]);
+    if (stories === null) return { armed: false, note: "Add SUPABASE_SERVICE_ROLE_KEY to arm." };
+    const ids = new Set((stories || []).map((s) => s.id));
+    const orphanTranslations = (translations || []).filter((t) => t.story_id && !ids.has(t.story_id)).length;
+    const orphanBibles = (bibles || []).filter((b) => b.story_id && !ids.has(b.story_id)).length;
+    const perStoryLangs = {};
+    (translations || []).forEach((t) => { if (t.story_id && t.language) (perStoryLangs[t.story_id] = perStoryLangs[t.story_id] || new Set()).add(t.language); });
+    const cap = LIMITS.maxLanguagesPerPublish || 12;
+    const overCap = Object.entries(perStoryLangs).filter(([, set]) => set.size > cap).map(([id, set]) => ({ id, langs: set.size }));
+    const issues = orphanTranslations + orphanBibles + overCap.length;
+    const status = orphanTranslations || orphanBibles ? "alert" : overCap.length ? "warn" : "ok";
+    await logHealth("integrity", status, issues, { orphanTranslations, orphanBibles, overCap: overCap.length });
+    return { armed: true, status, orphanTranslations, orphanBibles, overCap, cap };
+  },
+
+  // 🛡️ Security Posture — (1) no provider secret leaked into the JS bundle, (2) admin-only tables are not
+  // anon-readable. Reports pattern NAMES + counts only, never a secret value.
+  async posture_check(_params, ctx = {}) {
+    const base = prodBase();
+    // (1) Bundle secret scan.
+    const patterns = [
+      { name: "anthropic key (sk-ant-)", re: /sk-ant-[A-Za-z0-9_\-]{15,}/g },
+      { name: "openai-style key (sk-)", re: /\bsk-[A-Za-z0-9]{24,}/g },
+      { name: "google key (AIza)", re: /\bAIza[0-9A-Za-z_\-]{30,}/g },
+      { name: "VITE_ provider key", re: /VITE_[A-Z0-9_]*(KEY|TOKEN|SECRET)/g },
+      { name: "server key name in bundle", re: /(ANTHROPIC_API_KEY|ELEVENLABS_KEY|TOGETHER_API_KEY|FAL_KEY|SERVICE_ROLE)/g },
+    ];
+    const leaks = [];
+    try {
+      const idx = await (await fetch(`${base}/`)).text();
+      const assets = Array.from(idx.matchAll(/["']([^"']*\/assets\/[^"']+\.js)["']/g)).map((m) => m[1]).slice(0, 5);
+      const urls = assets.length ? assets.map((a) => (a.startsWith("http") ? a : `${base}${a.startsWith("/") ? "" : "/"}${a}`)) : [];
+      const texts = await Promise.all(urls.map(async (u) => { try { return await (await fetch(u)).text(); } catch { return ""; } }));
+      const blob = idx + texts.join("\n");
+      for (const p of patterns) { const hits = (blob.match(p.re) || []).length; if (hits) leaks.push({ pattern: p.name, count: hits }); }
+    } catch (e) { leaks.push({ pattern: "bundle fetch failed", count: 0, error: (e.message || "").slice(0, 100) }); }
+
+    // (2) Anon read probe on admin-only tables — any rows returned = an RLS leak.
+    const adminTables = ["error_log", "reports", "cost_ledger", "health_events", "security_flags", "cos_daily_logs", "brain_notes"];
+    const rlsLeaks = [];
+    if (SB_URL && SB_ANON) {
+      await Promise.all(adminTables.map(async (t) => {
+        try {
+          const r = await fetch(`${SB_URL}/rest/v1/${t}?select=*&limit=1`, { headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` } });
+          if (r.ok) { const rows = await r.json(); if (Array.isArray(rows) && rows.length > 0) rlsLeaks.push(t); }
+        } catch { /* ignore */ }
+      }));
+    }
+
+    const realLeaks = leaks.filter((l) => l.count > 0);
+    const status = realLeaks.length || rlsLeaks.length ? "alert" : "ok";
+    await logHealth("posture", status, realLeaks.length + rlsLeaks.length, { bundleLeaks: realLeaks, rlsLeaks });
+    let alerted = false;
+    if (ctx.actor === "cron" && status !== "ok") {
+      alerted = await alertInbox(`🛡️ Security Posture (ALERT): ${realLeaks.length ? `possible secret(s) in bundle (${realLeaks.map((l) => l.pattern).join(", ")})` : ""}${rlsLeaks.length ? ` anon can read: ${rlsLeaks.join(", ")}` : ""}.`);
+    }
+    return { armed: true, status, bundleLeaks: realLeaks, rlsLeaks, scanned: adminTables.length, alerted };
+  },
+
   // Consolidated cron entry — runs every maintenance check that should fire unattended, in one call, so
   // the whole wing needs only ONE daily cron (Hobby plans cap crons at 2 total / once-daily). Each check
   // still alerts Mr. K's inbox on its own when the actor is cron. On-demand checks use their own buttons.
   async cron_tick(params, ctx = {}) {
-    const [spend, deploy, tamper, discovery, seo] = await Promise.all([
-      CHECKS.spend_summary(params, ctx).catch((e) => ({ error: e.message })),
-      CHECKS.deploy_check(params, ctx).catch((e) => ({ error: e.message })),
-      CHECKS.tamper_watch(params, ctx).catch((e) => ({ error: e.message })),
-      CHECKS.discovery_check(params, ctx).catch((e) => ({ error: e.message })),
-      CHECKS.seo_audit(params, ctx).catch((e) => ({ error: e.message })),
-    ]);
-    return { ran: ["spend_summary", "deploy_check", "tamper_watch", "discovery_check", "seo_audit"], spend, deploy, tamper, discovery, seo };
+    const run = (name) => CHECKS[name](params, ctx).catch((e) => ({ error: e.message }));
+    // The unattended set: money, prod, security, data, discovery. links_check + catalog_check are
+    // on-demand quality audits (button-only) — not urgent and not worth a daily inbox nudge.
+    const names = ["spend_summary", "deploy_check", "tamper_watch", "uptime_check", "integrity_check", "posture_check", "discovery_check", "seo_audit"];
+    const out = {};
+    const results = await Promise.all(names.map(run));
+    names.forEach((n, i) => { out[n] = results[i]; });
+    return { ran: names, ...out };
   },
 };
 
