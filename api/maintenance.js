@@ -298,16 +298,63 @@ const CHECKS = {
     };
   },
 
+  // 🗺️ Sitemap & Discovery — verify /sitemap.xml, /robots.txt, /llms.txt are served on prod and report
+  // how many published stories the sitemap lists. No provider cost.
+  async discovery_check(_params, _ctx = {}) {
+    const base = prodBase();
+    const files = ["/sitemap.xml", "/robots.txt", "/llms.txt"];
+    const results = await Promise.all(files.map(async (path) => {
+      const started = Date.now();
+      try {
+        const r = await fetch(`${base}${path}`);
+        const text = await r.text();
+        const urls = path === "/sitemap.xml" ? (text.match(/<url>/g) || []).length : null;
+        return { path, ok: r.ok, status: r.status, ms: Date.now() - started, ...(urls != null ? { urls } : {}) };
+      } catch (e) {
+        return { path, ok: false, status: 0, ms: Date.now() - started, error: (e.message || "fetch failed").slice(0, 120) };
+      }
+    }));
+    const down = results.filter((r) => !r.ok);
+    const status = down.length === 0 ? "ok" : "warn";
+    const storyUrls = results.find((r) => r.path === "/sitemap.xml")?.urls ?? null;
+    await logHealth("discovery", status, down.length, results);
+    return { base, status, down: down.length, storyUrls, results };
+  },
+
+  // 🔍 SEO & Metadata audit — reads published stories and flags ones whose share card would be thin
+  // (missing title or a usable description). The /s/<id> prerender (api/share.js) generates the OG tags
+  // live from these fields, so "coverage" = stories that will unfurl with real title + description.
+  async seo_audit(_params, _ctx = {}) {
+    if (!SB_URL || !SB_ANON) return { armed: false, note: "Supabase not configured." };
+    let rows = [];
+    try {
+      const r = await fetch(`${SB_URL}/rest/v1/stories?status=eq.published&select=id,title,tagline,logline&limit=5000`, { headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` } });
+      rows = r.ok ? await r.json() : [];
+    } catch (e) { return { armed: true, ok: false, note: "Couldn't read stories: " + e.message }; }
+
+    const thin = rows
+      .filter((s) => !s.title || !(s.tagline || s.logline))
+      .map((s) => ({ id: s.id, title: s.title || null, hasDesc: !!(s.tagline || s.logline) }));
+    const total = rows.length;
+    const withMeta = total - thin.length;
+    const coverage = total ? Math.round((withMeta / total) * 100) : 100;
+    const status = total === 0 ? "ok" : thin.length === 0 ? "ok" : coverage >= 80 ? "warn" : "alert";
+    await logHealth("seo", status, thin.length, thin.slice(0, 50));
+    return { armed: true, status, total, withMeta, coverage, thin: thin.slice(0, 50) };
+  },
+
   // Consolidated cron entry — runs every maintenance check that should fire unattended, in one call, so
   // the whole wing needs only ONE daily cron (Hobby plans cap crons at 2 total / once-daily). Each check
   // still alerts Mr. K's inbox on its own when the actor is cron. On-demand checks use their own buttons.
   async cron_tick(params, ctx = {}) {
-    const [spend, deploy, tamper] = await Promise.all([
+    const [spend, deploy, tamper, discovery, seo] = await Promise.all([
       CHECKS.spend_summary(params, ctx).catch((e) => ({ error: e.message })),
       CHECKS.deploy_check(params, ctx).catch((e) => ({ error: e.message })),
       CHECKS.tamper_watch(params, ctx).catch((e) => ({ error: e.message })),
+      CHECKS.discovery_check(params, ctx).catch((e) => ({ error: e.message })),
+      CHECKS.seo_audit(params, ctx).catch((e) => ({ error: e.message })),
     ]);
-    return { ran: ["spend_summary", "deploy_check", "tamper_watch"], spend, deploy, tamper };
+    return { ran: ["spend_summary", "deploy_check", "tamper_watch", "discovery_check", "seo_audit"], spend, deploy, tamper, discovery, seo };
   },
 };
 

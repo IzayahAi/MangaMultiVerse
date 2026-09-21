@@ -42,6 +42,15 @@ export default function MaintenancePage({ token }) {
     setTamperBusy(false);
   };
 
+  const [discoBusy, setDiscoBusy] = useState(false);
+  const [disco, setDisco] = useState(null);
+  const [seo, setSeo] = useState(null);
+  const runDisco = async () => {
+    setDiscoBusy(true); setDisco(null); setSeo(null);
+    const [d, s] = await Promise.all([runMaintenance("discovery_check", token), runMaintenance("seo_audit", token)]);
+    setDisco(d); setSeo(s); setDiscoBusy(false);
+  };
+
   const waveColor = { P0: "#e24b4a", P1: C.gold, P2: C.muted };
   const statusColor = { planned: C.muted, building: C.gold, live: C.teal };
   const Dot = ({ on, label }) => (
@@ -257,6 +266,60 @@ export default function MaintenancePage({ token }) {
                 )}
                 {T.remediation && (
                   <div style={{ padding: "9px 12px", background: "#e24b4a14", border: "0.5px solid #e24b4a44", borderRadius: 9, fontSize: 11.5, color: C.text }}>🔧 {T.remediation}</div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* 🔍🗺️ Discovery & SEO */}
+      {(() => {
+        const D = disco?.ok && disco.result;
+        const S = seo?.ok && seo.result;
+        const statusColorMap = { ok: C.teal, warn: C.gold, alert: "#e24b4a" };
+        return (
+          <div style={{ background: C.surf, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: 18, marginBottom: 22 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>🔍 SEO &amp; 🗺️ Discovery <span style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginLeft: 6 }}>P0 · live</span></div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>sitemap.xml / robots.txt / llms.txt served + per-story OG coverage. <code>/s/&lt;id&gt;</code> unfurls each story.</div>
+              </div>
+              <Btn v="pri" onClick={runDisco} disabled={discoBusy} sx={{ fontSize: 12 }}>{discoBusy ? <><Spinner size={13} /> Checking…</> : "▶ Check discovery"}</Btn>
+            </div>
+
+            {(disco && !disco.ok) && (
+              <div style={{ padding: "10px 14px", background: "#e24b4a18", border: "0.5px solid #e24b4a55", borderRadius: 10, fontSize: 12.5, color: C.text }}>
+                Couldn't run: {disco.error}{disco.status ? ` (HTTP ${disco.status})` : ""}. Needs the API layer (<code>vercel dev</code>) + an admin session.
+              </div>
+            )}
+
+            {D && (
+              <div style={{ marginBottom: S ? 14 : 0 }}>
+                <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <Tag c={statusColorMap[D.status] || C.muted}>{D.status === "ok" ? "✓ Discovery files served" : `⚠ ${D.down} file down`}</Tag>
+                  {D.storyUrls != null && <span style={{ fontSize: 11, color: C.muted }}>{D.storyUrls} URL(s) in sitemap</span>}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8 }}>
+                  {D.results.map((t) => (
+                    <div key={t.path} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: C.text }}>
+                      <span style={{ width: 9, height: 9, borderRadius: "50%", background: t.ok ? C.teal : "#e24b4a", flexShrink: 0 }} />
+                      <span style={{ flex: 1 }}>{t.path}</span>
+                      <span style={{ color: C.muted, fontSize: 11 }}>{t.status || "err"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {S && S.armed !== false && (
+              <div style={{ borderTop: `0.5px solid ${C.border}`, paddingTop: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <Tag c={statusColorMap[S.status] || C.muted}>SEO {S.coverage}% covered</Tag>
+                  <span style={{ fontSize: 11.5, color: C.muted }}>{S.withMeta}/{S.total} published stories unfurl with title + description</span>
+                </div>
+                {S.thin?.length > 0 && (
+                  <div style={{ fontSize: 11.5, color: C.muted, marginTop: 8 }}>Thin meta: {S.thin.slice(0, 8).map((p) => <span key={p.id} style={{ marginRight: 10, color: C.gold }}>{p.title || p.id.slice(0, 8)}{!p.hasDesc ? " (no tagline)" : ""}</span>)}</div>
                 )}
               </div>
             )}

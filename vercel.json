@@ -1,5 +1,9 @@
 {
   "rewrites": [
+    { "source": "/sitemap.xml", "destination": "/api/discovery?kind=sitemap" },
+    { "source": "/robots.txt", "destination": "/api/discovery?kind=robots" },
+    { "source": "/llms.txt", "destination": "/api/discovery?kind=llms" },
+    { "source": "/s/:id", "destination": "/api/share?id=:id" },
     { "source": "/(.*)", "destination": "/" }
   ],
   "crons": [

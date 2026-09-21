@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback, useRef } from "react";
 import { SEED_LIB, GENRES, ORIGINS, rndCover, LANG_GROUPS } from "./constants.js";
 import { useTheme, useThemeToggle } from "./ThemeContext.jsx";
 import { useI18n } from "./lib/i18n.jsx";
@@ -60,6 +60,17 @@ export default function MangaMultiVerse() {
   [...publicStories, ...myPublished].forEach(s => publishedMap.set(s.id, s));
   const published = [...publishedMap.values()];
   const all = [...SEED_LIB, ...published];
+
+  // Deep link: /s/<id> (the sitemap + share URLs) opens that published story in the reader, once the
+  // catalog has loaded. A ref makes it fire only once so it doesn't re-open after the user navigates.
+  const deepLinkRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkRef.current) return;
+    const m = /^\/s\/([^/?#]+)/.exec(window.location.pathname || "");
+    if (!m) { deepLinkRef.current = true; return; }
+    const story = all.find(s => String(s.id) === decodeURIComponent(m[1]));
+    if (story) { setReading(story); setPage("home"); deepLinkRef.current = true; }
+  }, [published.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const filtered = all.filter(s=>{
     if(fG!=="All"&&!(s.genre_tags||[]).includes(fG)) return false;
     if(fO!=="All"&&s.origin!==fO) return false;

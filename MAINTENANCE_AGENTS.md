@@ -37,8 +37,8 @@ Build 7 of the 12 agents on top of this. **Status: SHIPPED (2026-09-21).**
 | 💸 **Spend Sentinel** ✅ | Per-provider/per-action AI spend + Fal 429 rate vs. budget; alert on runaway burn | cron hourly + button | `cost_ledger` table, provider billing keys |
 | 🚀 **Deploy Sentinel** ✅ | After push-to-main, verify deploy boots + every `api/*` proxy + Supabase respond | cron daily + button | `health_events` table |
 | 🔓 **Credit-Tamper & Abuse Watch** ✅ | Detect the client-set-grant tamper hole + demo-cap evasion (balances > 120, IP rotation) | cron daily + button | service-role key, `security_flags` table |
-| 🔍 **SEO & Social Metadata Agent** | Audit + generate per-story OG/meta (SPA ships zero OG tags — shares render blank) | on-publish + cron | ⚠️ prerender/head-injection surface, else report-only |
-| 🗺️ **Sitemap & Discovery Agent** | Emit `sitemap.xml` / `robots.txt` / `llms.txt` so crawlers find the catalog | cron daily | stable per-story public slugs |
+| 🔍 **SEO & Social Metadata Agent** ✅ | Audit + generate per-story OG/meta (SPA ships zero OG tags — shares render blank) | button + cron | ✅ prerender surface built (`api/share.js` at `/s/<id>`) |
+| 🗺️ **Sitemap & Discovery Agent** ✅ | Emit `sitemap.xml` / `robots.txt` / `llms.txt` so crawlers find the catalog | button + cron | ✅ per-story `/s/<id>` slugs built |
 
 **Why first:** closes the three biggest gaps — silent bad deploys, uncapped/abusable AI spend
 (the founder's #1 concern + the funding blocker), and a catalog that's invisible + unshareable.
@@ -97,7 +97,18 @@ the prerender decision.
   cron, and surfaces the remediation (a server-side signup trigger — its own hardening ticket, see
   LAUNCH.md). Folded into the daily `cron_tick` (still 2 crons total). UI: an accounts-scan panel on the
   Maintenance page. **Founder setup:** run `db/security_flags.sql` (optional — the scan runs live without
-  it). Next: the 🔍/🗺️ SEO + Sitemap pair (carries a prerender design decision). **Wave 1 P0: 3 of 5 shipped.**
+  it). **Wave 1 P0: 3 of 5 shipped.**
+
+- **2026-09-21 — 🔍 SEO + 🗺️ Sitemap pair (Wave 1, agents 4–5) → WAVE 1 COMPLETE.** Built the missing
+  connective tissue: a canonical **`/s/<id>` public story URL**. `api/share.js` serves that route as the
+  SPA shell with per-story OG/meta injected into `<head>` (the prerender surface — SEO is no longer
+  report-only); `api/discovery.js` serves `/sitemap.xml`, `/robots.txt`, `/llms.txt` listing every
+  published story at `/s/<id>`; App.jsx gained a deep-link handler so `/s/<id>` opens that story in the
+  reader. Two runner checks — `discovery_check` (files served + URL count) and `seo_audit` (per-story
+  meta coverage) — folded into `cron_tick` and shown in a Discovery & SEO panel. vercel.json routes the
+  four paths ahead of the SPA catch-all. No new tables (reuses `health_events`); nothing for the founder
+  to run. Note: the demo is private today, so this pays off when it goes public — built now to finish the
+  wave. **Wave 1 P0: 5 of 5 shipped ✅.** Next up: Wave 2 (P1) internal-health agents.
 
 ---
 _Source: synthesized from a 3-desk planning pass (Reliability, Growth/SEO, Cost/Data/Security)._
