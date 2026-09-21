@@ -26,6 +26,14 @@ export default function MaintenancePage({ token }) {
     setSpendBusy(false);
   };
 
+  const [deployBusy, setDeployBusy] = useState(false);
+  const [deploy, setDeploy] = useState(null);
+  const runDeploy = async () => {
+    setDeployBusy(true); setDeploy(null);
+    setDeploy(await runMaintenance("deploy_check", token));
+    setDeployBusy(false);
+  };
+
   const waveColor = { P0: "#e24b4a", P1: C.gold, P2: C.muted };
   const statusColor = { planned: C.muted, building: C.gold, live: C.teal };
   const Dot = ({ on, label }) => (
@@ -143,6 +151,48 @@ export default function MaintenancePage({ token }) {
                   <span>7d total <Money v={w["7d"].usd} /></span>
                   <span>Fal 429s: {S.fal429["1h"]}·1h / {S.fal429["24h"]}·24h · rate <b style={{ color: S.fal429.rate24h >= 0.3 ? C.gold : C.text }}>{Math.round(S.fal429.rate24h * 100)}%</b></span>
                   <span>{S.rowsConsidered} ledger rows · {spend.ms}ms</span>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* 🚀 Deploy Sentinel */}
+      {(() => {
+        const D = deploy?.ok && deploy.result;
+        const statusColorMap = { ok: C.teal, warn: C.gold, alert: "#e24b4a" };
+        return (
+          <div style={{ background: C.surf, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: 18, marginBottom: 22 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>🚀 Deploy Sentinel <span style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginLeft: 6 }}>P0 · live</span></div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>The live deploy boots + every <code>api/*</code> proxy + Supabase respond. Runs on cron; alerts on failure.</div>
+              </div>
+              <Btn v="pri" onClick={runDeploy} disabled={deployBusy} sx={{ fontSize: 12 }}>{deployBusy ? <><Spinner size={13} /> Probing…</> : "▶ Check deploy"}</Btn>
+            </div>
+
+            {deploy && !deploy.ok && (
+              <div style={{ padding: "10px 14px", background: "#e24b4a18", border: "0.5px solid #e24b4a55", borderRadius: 10, fontSize: 12.5, color: C.text }}>
+                Couldn't run the check: {deploy.error}{deploy.status ? ` (HTTP ${deploy.status})` : ""}. Needs the API layer (<code>vercel dev</code>) + an admin session.
+              </div>
+            )}
+
+            {D && (
+              <div>
+                <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <Tag c={statusColorMap[D.status] || C.muted}>{D.status === "ok" ? "✓ All healthy" : D.status === "warn" ? `⚠ ${D.down} proxy down` : `🚨 ${D.down} down`}</Tag>
+                  <span style={{ fontSize: 11, color: C.muted }}>{D.base}</span>
+                  {D.alerted && <span style={{ fontSize: 11, color: C.muted }}>· alert sent to Mr. K inbox</span>}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8 }}>
+                  {D.results.map((t) => (
+                    <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: C.text }}>
+                      <span style={{ width: 9, height: 9, borderRadius: "50%", background: t.ok ? C.teal : "#e24b4a", flexShrink: 0 }} />
+                      <span style={{ flex: 1 }}>{t.name}</span>
+                      <span style={{ color: C.muted, fontSize: 11 }}>{t.status || "err"} · {t.ms}ms</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

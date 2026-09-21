@@ -67,6 +67,26 @@ async function alertInbox(text) {
   } catch { return false; }
 }
 
+// Best-effort write to the health-event log (anon insert allowed by health_events RLS). No-ops if the
+// table isn't set up yet — the check still returns live results.
+async function logHealth(kind, status, down, results) {
+  if (!SB_URL || !SB_ANON) return;
+  try {
+    await fetch(`${SB_URL}/rest/v1/health_events`, {
+      method: "POST",
+      headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ kind, status, down, results }),
+    });
+  } catch { /* best-effort */ }
+}
+
+// The prod base URL to probe: an explicit PROD_URL, else this deployment (VERCEL_URL), else the known
+// production domain. Post-deploy the cron runs ON the new deployment, so VERCEL_URL verifies THAT build.
+function prodBase() {
+  const b = process.env.PROD_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://mangaverse-deploy.vercel.app");
+  return b.replace(/\/$/, "");
+}
+
 // The check registry. Phase 0 ships `selfcheck`; maintenance agents add their own here.
 const CHECKS = {
   // Reports which capabilities are wired and whether the service key can read past RLS.
@@ -159,6 +179,57 @@ const CHECKS = {
       rowsConsidered: rows.length,
       alerted,
     };
+  },
+
+  // 🚀 Deploy Sentinel — verify the live deploy is healthy: the app boots, every api/* proxy responds
+  // (OPTIONS → 200, so no provider call and no spend), and Supabase answers. Records to health_events;
+  // on the cron, alerts Mr. K's inbox if anything's down. `app` or `supabase` down = alert; a proxy
+  // down = warn.
+  async deploy_check(_params, ctx = {}) {
+    const base = prodBase();
+    const targets = [
+      { name: "app",             method: "GET",     url: `${base}/`,                 ok: (s) => s >= 200 && s < 400 },
+      { name: "api/claude",      method: "OPTIONS", url: `${base}/api/claude`,        ok: (s) => s === 200 },
+      { name: "api/fal",         method: "OPTIONS", url: `${base}/api/fal`,           ok: (s) => s === 200 },
+      { name: "api/image",       method: "OPTIONS", url: `${base}/api/image`,         ok: (s) => s === 200 },
+      { name: "api/eleven",      method: "OPTIONS", url: `${base}/api/eleven`,        ok: (s) => s === 200 },
+      { name: "api/maintenance", method: "OPTIONS", url: `${base}/api/maintenance`,   ok: (s) => s === 200 },
+      { name: "supabase",        method: "GET",     url: `${SB_URL}/rest/v1/`, headers: { apikey: SB_ANON }, ok: (s) => s >= 200 && s < 500 },
+    ];
+
+    const results = await Promise.all(targets.map(async (t) => {
+      const started = Date.now();
+      try {
+        const r = await fetch(t.url, { method: t.method, headers: t.headers || {} });
+        return { name: t.name, ok: t.ok(r.status), status: r.status, ms: Date.now() - started };
+      } catch (e) {
+        return { name: t.name, ok: false, status: 0, ms: Date.now() - started, error: (e.message || "fetch failed").slice(0, 120) };
+      }
+    }));
+
+    const down = results.filter((r) => !r.ok);
+    const critical = down.some((d) => d.name === "app" || d.name === "supabase");
+    const status = down.length === 0 ? "ok" : critical ? "alert" : "warn";
+
+    await logHealth("deploy", status, down.length, results);
+
+    let alerted = false;
+    if (ctx.actor === "cron" && status !== "ok") {
+      alerted = await alertInbox(`🚀 Deploy Sentinel: ${down.length} target(s) failing — ${down.map((d) => `${d.name} (${d.status || "err"})`).join(", ")}. Base: ${base}`);
+    }
+
+    return { base, status, down: down.length, results, alerted };
+  },
+
+  // Consolidated cron entry — runs every maintenance check that should fire unattended, in one call, so
+  // the whole wing needs only ONE daily cron (Hobby plans cap crons at 2 total / once-daily). Each check
+  // still alerts Mr. K's inbox on its own when the actor is cron. On-demand checks use their own buttons.
+  async cron_tick(params, ctx = {}) {
+    const [spend, deploy] = await Promise.all([
+      CHECKS.spend_summary(params, ctx).catch((e) => ({ error: e.message })),
+      CHECKS.deploy_check(params, ctx).catch((e) => ({ error: e.message })),
+    ]);
+    return { ran: ["spend_summary", "deploy_check"], spend, deploy };
   },
 };
 
