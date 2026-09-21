@@ -343,7 +343,8 @@ export async function signUp(email, password, username) {
   const authUser = r.user ?? r.data?.user;
   const token    = r.access_token ?? r.data?.session?.access_token ?? r.session?.access_token;
   if (!authUser?.id) throw new Error("Check your email to confirm your account, then sign in.");
-  try { await sb.post("profiles", { id:authUser.id, username, email, role:"creator", credits:DEMO_CREDITS }, token); } catch(e){ console.warn("profile insert:", e); }
+  // The profile row is created server-side by the on_auth_user_created trigger (db/signup_trigger.sql)
+  // with role='creator' + the credit grant — the browser can no longer set those columns.
   return { user:{ id:authUser.id, email, username, role:"creator", credits:DEMO_CREDITS }, token };
 }
 
@@ -409,16 +410,12 @@ export async function fetchPublishedStories() {
   }
 }
 
-// Decrement a user's credits in Supabase. Returns the new balance, or null on failure.
+// Move the LOCAL credit counter only. Credits are server-authoritative now: at release the spend_credits
+// RPC charges them (see api/_guard.js), and the credits column is no longer client-writable (db/
+// signup_trigger.sql revoked write on it). In demo the number is cosmetic — the real cap is per-IP,
+// server-side — so this just decrements the display.
 export async function spendCredits(userId, token, currentBalance, amount) {
-  const newBalance = Math.max(0, currentBalance - amount);
-  if (DEMO || !token) return newBalance; // demo mode: just track locally
-  try {
-    await sb.patch("profiles", userId, { credits: newBalance }, token);
-  } catch (e) {
-    console.warn("Credit update failed (kept local):", e.message);
-  }
-  return newBalance;
+  return Math.max(0, currentBalance - amount);
 }
 
 export function useDB(token, userId) {
