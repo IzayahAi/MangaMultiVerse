@@ -143,11 +143,17 @@ const MangaReader = ({ story, onBack, panelImages, signedIn = false, reporterId 
   const [chScript, setChScript] = useState(story.script);
   const [chImages, setChImages] = useState(ch1Images);
   const [chLoading, setChLoading] = useState(false);
+  // True when a chapter the story advertises (chapters > 1) has no persisted content anywhere — no
+  // chapters-table row and no local cache. Without this the reader silently showed Chapter 1's content
+  // under the missing chapter's label, because chScript kept its prior value when the fetch found nothing.
+  const [chapterMissing, setChapterMissing] = useState(false);
   useEffect(() => {
     let active = true;
+    setChapterMissing(false);
     if (currentChapter <= 1) { setChScript(story.script); setChImages(ch1Images); setChLoading(false); return; }
     const cacheKey = `mv_ch_${story.id}_${currentChapter}`;
-    try { const c = JSON.parse(localStorage.getItem(cacheKey) || "null"); if (c?.panels) { setChScript(c); setChImages(c.panel_images || {}); } } catch {}
+    let hadCache = false;
+    try { const c = JSON.parse(localStorage.getItem(cacheKey) || "null"); if (c?.panels) { setChScript(c); setChImages(c.panel_images || {}); hadCache = true; } } catch {}
     setChLoading(true);
     (async () => {
       const row = await fetchChapter(story.id, currentChapter);
@@ -155,6 +161,8 @@ const MangaReader = ({ story, onBack, panelImages, signedIn = false, reporterId 
       if (row?.script?.panels?.length) {
         setChScript(row.script); setChImages(row.script.panel_images || {});
         try { localStorage.setItem(cacheKey, JSON.stringify(row.script)); } catch {}
+      } else if (!hadCache) {
+        setChapterMissing(true);
       }
       setChLoading(false);
     })();
@@ -306,7 +314,19 @@ const MangaReader = ({ story, onBack, panelImages, signedIn = false, reporterId 
         </div>
       </div>
 
-      {readMode==="scroll"&&(
+      {chapterMissing && (
+        <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",textAlign:"center",padding:"120px 24px 24px"}}>
+          <div style={{fontSize:40,marginBottom:12}}>🚧</div>
+          <div style={{fontSize:18,fontWeight:600,color:"#fff",marginBottom:8,fontFamily:"'DM Sans',sans-serif"}}>Chapter {currentChapter} isn’t available yet</div>
+          <div style={{fontSize:13,color:"rgba(255,255,255,0.55)",maxWidth:420,lineHeight:1.6,marginBottom:24,fontFamily:"'DM Sans',sans-serif"}}>This chapter hasn’t been published for this story. It may still be a draft.</div>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={()=>setCurrentChapter(1)} style={{padding:"10px 24px",borderRadius:8,background:`linear-gradient(135deg,${C.purple},${C.pink})`,border:"none",color:"#fff",fontSize:13,cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>← Back to Chapter 1</button>
+            <button onClick={onBack} style={{padding:"10px 24px",borderRadius:8,background:"rgba(255,255,255,0.08)",border:"0.5px solid rgba(255,255,255,0.15)",color:"#fff",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Back to library</button>
+          </div>
+        </div>
+      )}
+
+      {!chapterMissing && readMode==="scroll"&&(
         <div style={{paddingTop:52,maxWidth:720,margin:"0 auto",background:"#e9e9e4"}}>
           {panels.map((panel,i) => {
             const mood = getMood(panel.scene + " " + panel.mood);
@@ -487,7 +507,7 @@ const MangaReader = ({ story, onBack, panelImages, signedIn = false, reporterId 
         </div>
       )}
 
-      {readMode==="page"&&(
+      {!chapterMissing && readMode==="page"&&(
         <div style={{paddingTop:52,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"calc(100vh - 52px)"}}>
           {(() => {
             const panel = panels[currentPage];
