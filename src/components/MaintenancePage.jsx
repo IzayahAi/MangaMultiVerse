@@ -34,6 +34,14 @@ export default function MaintenancePage({ token }) {
     setDeployBusy(false);
   };
 
+  const [tamperBusy, setTamperBusy] = useState(false);
+  const [tamper, setTamper] = useState(null);
+  const runTamper = async () => {
+    setTamperBusy(true); setTamper(null);
+    setTamper(await runMaintenance("tamper_watch", token));
+    setTamperBusy(false);
+  };
+
   const waveColor = { P0: "#e24b4a", P1: C.gold, P2: C.muted };
   const statusColor = { planned: C.muted, building: C.gold, live: C.teal };
   const Dot = ({ on, label }) => (
@@ -194,6 +202,62 @@ export default function MaintenancePage({ token }) {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* 🔓 Credit-Tamper & Abuse Watch */}
+      {(() => {
+        const T = tamper?.ok && tamper.result;
+        const f = T?.findings;
+        const statusColorMap = { ok: C.teal, warn: C.gold, alert: "#e24b4a" };
+        const Row = ({ label, value, bad }) => (
+          <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: C.text }}>
+            <span style={{ width: 9, height: 9, borderRadius: "50%", background: bad ? "#e24b4a" : C.teal, flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>{label}</span>
+            <span style={{ color: bad ? "#e24b4a" : C.muted, fontSize: 11.5, fontWeight: bad ? 600 : 400 }}>{value}</span>
+          </div>
+        );
+        return (
+          <div style={{ background: C.surf, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: 18, marginBottom: 22 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>🔓 Credit-Tamper &amp; Abuse Watch <span style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginLeft: 6 }}>P0 · live</span></div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Over-grant balances, rogue admins, and signup bursts (the client-set-grant hole). Runs on cron.</div>
+              </div>
+              <Btn v="pri" onClick={runTamper} disabled={tamperBusy} sx={{ fontSize: 12 }}>{tamperBusy ? <><Spinner size={13} /> Scanning…</> : "▶ Scan accounts"}</Btn>
+            </div>
+
+            {tamper && !tamper.ok && (
+              <div style={{ padding: "10px 14px", background: "#e24b4a18", border: "0.5px solid #e24b4a55", borderRadius: 10, fontSize: 12.5, color: C.text }}>
+                Couldn't scan: {tamper.error}{tamper.status ? ` (HTTP ${tamper.status})` : ""}. Needs the API layer (<code>vercel dev</code>) + an admin session.
+              </div>
+            )}
+
+            {T && T.armed === false && (
+              <div style={{ fontSize: 12.5, color: C.text }}><Tag c={C.gold}>Not armed</Tag> <span style={{ marginLeft: 8, color: C.muted }}>{T.note}</span></div>
+            )}
+
+            {T && T.armed && f && (
+              <div>
+                <div style={{ marginBottom: 12 }}>
+                  <Tag c={statusColorMap[T.status] || C.muted}>{T.status === "ok" ? "✓ No tampering found" : T.status === "warn" ? "⚠ Review needed" : "🚨 Tamper detected"}</Tag>
+                  <span style={{ fontSize: 11, color: C.muted, marginLeft: 8 }}>{f.totalProfiles} accounts scanned · grant {f.grant}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 8, marginBottom: f.overCredits?.length || T.remediation ? 12 : 0 }}>
+                  <Row label={`Over-grant (> ${f.grant})`} value={f.overCredits.length} bad={f.overCredits.length > 0} />
+                  <Row label="Negative credits" value={f.negative.length} bad={f.negative.length > 0} />
+                  <Row label="Admin accounts" value={f.adminCount} bad={f.adminCount > 1} />
+                  <Row label="Signups (24h)" value={f.recentSignups24h ?? "n/a"} bad={f.recentSignups24h != null && f.recentSignups24h > 20} />
+                </div>
+                {f.overCredits?.length > 0 && (
+                  <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 8 }}>Flagged: {f.overCredits.slice(0, 8).map((p) => <span key={p.id} style={{ marginRight: 10, color: "#e24b4a" }}>{p.username || p.email || p.id.slice(0, 8)} ({p.credits})</span>)}</div>
+                )}
+                {T.remediation && (
+                  <div style={{ padding: "9px 12px", background: "#e24b4a14", border: "0.5px solid #e24b4a44", borderRadius: 9, fontSize: 11.5, color: C.text }}>🔧 {T.remediation}</div>
+                )}
               </div>
             )}
           </div>

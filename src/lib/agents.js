@@ -35,7 +35,7 @@ export const CONTROL_ROOM = [
 export const MAINTENANCE = [
   { id: "spend",     name: "Spend Sentinel",           icon: "💸", wave: "P0", status: "live",    blurb: "Per-provider AI spend + Fal 429 rate vs. budget; alerts on runaway burn." },
   { id: "deploy",    name: "Deploy Sentinel",          icon: "🚀", wave: "P0", status: "live",    blurb: "After each push, verify the deploy boots + every proxy + Supabase respond." },
-  { id: "tamper",    name: "Credit-Tamper Watch",      icon: "🔓", wave: "P0", status: "planned", blurb: "Detect the client-set-grant tamper hole + demo-cap evasion." },
+  { id: "tamper",    name: "Credit-Tamper Watch",      icon: "🔓", wave: "P0", status: "live",    blurb: "Detect the client-set-grant tamper hole + demo-cap evasion." },
   { id: "seo",       name: "SEO & Metadata Agent",     icon: "🔍", wave: "P0", status: "planned", blurb: "Audit + generate per-story OG/meta (the SPA ships zero OG tags)." },
   { id: "sitemap",   name: "Sitemap & Discovery",      icon: "🗺️", wave: "P0", status: "planned", blurb: "Emit sitemap.xml / robots.txt / llms.txt so crawlers find the catalog." },
   { id: "uptime",    name: "Uptime Monitor",           icon: "📡", wave: "P1", status: "planned", blurb: "Continuous liveness of prod + proxies + Supabase + synthesis freshness." },

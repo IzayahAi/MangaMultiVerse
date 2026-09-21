@@ -36,7 +36,7 @@ Build 7 of the 12 agents on top of this. **Status: SHIPPED (2026-09-21).**
 |---|---|---|---|
 | 💸 **Spend Sentinel** ✅ | Per-provider/per-action AI spend + Fal 429 rate vs. budget; alert on runaway burn | cron hourly + button | `cost_ledger` table, provider billing keys |
 | 🚀 **Deploy Sentinel** ✅ | After push-to-main, verify deploy boots + every `api/*` proxy + Supabase respond | cron daily + button | `health_events` table |
-| 🔓 **Credit-Tamper & Abuse Watch** | Detect the client-set-grant tamper hole + demo-cap evasion (balances > 120, IP rotation) | cron 6h | service-role key, `security_flags` table |
+| 🔓 **Credit-Tamper & Abuse Watch** ✅ | Detect the client-set-grant tamper hole + demo-cap evasion (balances > 120, IP rotation) | cron daily + button | service-role key, `security_flags` table |
 | 🔍 **SEO & Social Metadata Agent** | Audit + generate per-story OG/meta (SPA ships zero OG tags — shares render blank) | on-publish + cron | ⚠️ prerender/head-injection surface, else report-only |
 | 🗺️ **Sitemap & Discovery Agent** | Emit `sitemap.xml` / `robots.txt` / `llms.txt` so crawlers find the catalog | cron daily | stable per-story public slugs |
 
@@ -88,7 +88,16 @@ the prerender decision.
   together (replacing the standalone hourly spend cron), so the wing uses 2 crons total (synthesis weekly
   + cron_tick daily). UI: a health panel on the Maintenance page. **Founder setup:** run
   `db/health_events.sql` (optional — the check runs live without it; the table persists history + enables
-  alerts). Next: the 🔍/🗺️ SEO + Sitemap pair.
+  alerts). ✅ armed 2026-09-21.
+
+- **2026-09-21 — 🔓 Credit-Tamper & Abuse Watch (Wave 1, agent 3).** `tamper_watch` reads `profiles` past
+  RLS (service role) and flags the fallout of the client-set-grant hole (`signUp` inserts `credits` + `role`
+  from the browser): over-grant balances (> demo grant, non-admin), negative credits, unexpected admin
+  accounts, and a 24h signup burst. Records to the new `security_flags` table, alerts Mr. K's inbox on the
+  cron, and surfaces the remediation (a server-side signup trigger — its own hardening ticket, see
+  LAUNCH.md). Folded into the daily `cron_tick` (still 2 crons total). UI: an accounts-scan panel on the
+  Maintenance page. **Founder setup:** run `db/security_flags.sql` (optional — the scan runs live without
+  it). Next: the 🔍/🗺️ SEO + Sitemap pair (carries a prerender design decision). **Wave 1 P0: 3 of 5 shipped.**
 
 ---
 _Source: synthesized from a 3-desk planning pass (Reliability, Growth/SEO, Cost/Data/Security)._

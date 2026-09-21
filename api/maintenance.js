@@ -1,5 +1,5 @@
 import { corsHeaders, getToken } from "./_guard.js";
-import { BUDGET } from "./_pricing.js";
+import { BUDGET, DEMO_CREDITS } from "./_pricing.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The secured maintenance runner (Phase 0 of the maintenance-agent roadmap).
@@ -76,6 +76,19 @@ async function logHealth(kind, status, down, results) {
       method: "POST",
       headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, "Content-Type": "application/json", Prefer: "return=minimal" },
       body: JSON.stringify({ kind, status, down, results }),
+    });
+  } catch { /* best-effort */ }
+}
+
+// Best-effort write to the security-flags log (anon insert allowed by security_flags RLS). No-ops if the
+// table isn't set up yet — the check still returns live findings.
+async function logFlags(status, findings) {
+  if (!SB_URL || !SB_ANON) return;
+  try {
+    await fetch(`${SB_URL}/rest/v1/security_flags`, {
+      method: "POST",
+      headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ status, findings }),
     });
   } catch { /* best-effort */ }
 }
@@ -221,15 +234,80 @@ const CHECKS = {
     return { base, status, down: down.length, results, alerted };
   },
 
+  // 🔓 Credit-Tamper & Abuse Watch — reads profiles past RLS (service role) and flags the fallout of the
+  // client-set-grant hole (signUp inserts profiles.credits + role from the browser, so both are
+  // tamperable until a server-side signup trigger lands):
+  //   • over-grant  — a non-admin with credits above the demo grant (legit balances only ever decrease)
+  //   • rogue admin — any admin account (should only be the founder; surfaced for an eyeball)
+  //   • negative    — credits < 0 (should be impossible via spend_credits)
+  //   • velocity    — a burst of signups in 24h (scripted multi-account / demo-cap evasion)
+  // Records a summary to security_flags; alerts Mr. K's inbox on the cron. Does NOT fix anything — the
+  // remediation (a server-side signup trigger) is its own hardening ticket.
+  async tamper_watch(_params, ctx = {}) {
+    const r = svc(`/rest/v1/profiles?select=id,username,email,role,credits,created_at&limit=10000`);
+    if (!r) return { armed: false, note: "Add SUPABASE_SERVICE_ROLE_KEY to Vercel to arm the tamper watch." };
+    const resp = await r;
+    if (!resp.ok) return { armed: true, ok: false, note: `Couldn't read profiles (HTTP ${resp.status}).` };
+    const rows = await resp.json().catch(() => []);
+
+    const grant = DEMO_CREDITS;
+    const brief = (p) => ({ id: p.id, username: p.username || null, email: p.email || null, credits: p.credits, role: p.role });
+    const overCredits = rows.filter((p) => p.role !== "admin" && Number(p.credits) > grant).map(brief);
+    const negative    = rows.filter((p) => Number(p.credits) < 0).map(brief);
+    const admins      = rows.filter((p) => p.role === "admin").map(brief);
+
+    const dayAgo = Date.now() - 864e5;
+    const hasCreatedAt = rows.some((p) => p.created_at);
+    const recentSignups24h = hasCreatedAt ? rows.filter((p) => p.created_at && new Date(p.created_at).getTime() >= dayAgo).length : null;
+    const VELOCITY_WARN = 20; // signups/24h above this looks scripted for a private demo
+
+    const findings = {
+      totalProfiles: rows.length,
+      grant,
+      overCredits,
+      negative,
+      admins,
+      adminCount: admins.length,
+      recentSignups24h,
+    };
+
+    // alert = concrete tamper (over-grant or negative credits). warn = eyeball needed (extra admins or a
+    // signup burst). ok = nothing anomalous.
+    const status =
+      overCredits.length || negative.length ? "alert"
+      : (admins.length > 1 || (recentSignups24h != null && recentSignups24h > VELOCITY_WARN)) ? "warn"
+      : "ok";
+
+    await logFlags(status, findings);
+
+    let alerted = false;
+    if (ctx.actor === "cron" && status !== "ok") {
+      const bits = [];
+      if (overCredits.length) bits.push(`${overCredits.length} account(s) over the ${grant}-credit grant`);
+      if (negative.length) bits.push(`${negative.length} with negative credits`);
+      if (admins.length > 1) bits.push(`${admins.length} admin accounts`);
+      if (recentSignups24h != null && recentSignups24h > VELOCITY_WARN) bits.push(`${recentSignups24h} signups in 24h`);
+      alerted = await alertInbox(`🔓 Credit-Tamper Watch (${status.toUpperCase()}): ${bits.join("; ")}. Review the Maintenance page.`);
+    }
+
+    return {
+      armed: true, status, findings,
+      remediation: overCredits.length || negative.length
+        ? "Harden signUp: move the credit grant + role to a server-side Supabase signup trigger so the browser can't set them (see LAUNCH.md)."
+        : null,
+    };
+  },
+
   // Consolidated cron entry — runs every maintenance check that should fire unattended, in one call, so
   // the whole wing needs only ONE daily cron (Hobby plans cap crons at 2 total / once-daily). Each check
   // still alerts Mr. K's inbox on its own when the actor is cron. On-demand checks use their own buttons.
   async cron_tick(params, ctx = {}) {
-    const [spend, deploy] = await Promise.all([
+    const [spend, deploy, tamper] = await Promise.all([
       CHECKS.spend_summary(params, ctx).catch((e) => ({ error: e.message })),
       CHECKS.deploy_check(params, ctx).catch((e) => ({ error: e.message })),
+      CHECKS.tamper_watch(params, ctx).catch((e) => ({ error: e.message })),
     ]);
-    return { ran: ["spend_summary", "deploy_check"], spend, deploy };
+    return { ran: ["spend_summary", "deploy_check", "tamper_watch"], spend, deploy, tamper };
   },
 };
 
