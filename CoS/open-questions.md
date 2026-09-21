@@ -17,9 +17,16 @@ JSON — Mr. K is live in production and the weekly cron is active. Nothing to r
 ## Waiting / to decide
 
 - **Arm `db/spend_credits.sql` + `RELEASE_MODE`?** The secure credit path is coded but the SQL isn't run
-  and the gate is off (demo). Flip at launch.
-- **Agent Factory floor** — captured vision, not scheduled. Needs Phase 1 of the security work live first.
+  and the gate is off (demo). Flip at launch. (Note: the client-set-grant hole is now closed server-side
+  regardless — signup trigger + profiles.role/credits column locks, verified 2026-09-21.)
+- **Promote maintenance agents from manual → autonomous?** All 12 are built; uptime/integrity/posture/
+  deps/spend/deploy/tamper already run on the daily `cron_tick` with inbox alerts. Next level is
+  approval-gated auto-remediation (the Tier-3 "ACTION NEEDED" pattern) — not scheduled.
+- **Agent Factory floor** — captured vision, not scheduled. The Phase 1 security plumbing it depends on is
+  now largely in place.
 
 ## Captured ideas (not yet acted on)
 
-_(Mr. K logs stray mid-session ideas here.)_
+- **SEO/Sitemap pays off when the demo goes public.** Built now (Wave 1) but the demo is private, so the
+  `/s/<id>` prerender + sitemap/robots/llms only matter once discovery is wanted.
+- **Bundle-size follow-up.** The build warns the main chunk is >500 KB; code-splitting is deferred, non-urgent.

@@ -4,6 +4,33 @@ _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
 ## 2026-09-21
 
+- **Shipped the ENTIRE Maintenance agent wing — 12 agents (P0×5, P1×5, P2×2) — in one session, on the
+  Phase 0 runner.** P0: 💸 Spend Sentinel (`cost_ledger`), 🚀 Deploy Sentinel (`health_events`), 🔓
+  Credit-Tamper Watch (`security_flags`), 🔍 SEO + 🗺️ Sitemap (built a real `/s/<id>` prerender surface —
+  `api/share.js` injects per-story OG tags; `api/discovery.js` serves sitemap/robots/llms). P1: 📡 Uptime,
+  🩹 Broken-Link, 📚 Catalog Health, 🧬 Data-Integrity, 🛡️ Security Posture. P2: 📦 Dependency & Backup
+  (OSV scan), ♿ Accessibility. Crons kept Hobby-safe: 2 total (weekly synthesis + a daily `cron_tick`
+  running 9 checks, each alerting Mr. K's inbox on its own). Founder armed 3 new Supabase tables — all
+  verified (anon insert 201 / RLS-gated read). Rationale: as the app grows, maintenance needs its own
+  server-side agents the public anon key can't power; this completes the roadmap synthesized 2026-09-21. — Mr. K
+
+- **Closed the client-set-grant security hole (server-side signup trigger + column locks).** `signUp` used
+  to insert the profile row from the browser with `credits` + `role`, so a user could self-grant unlimited
+  credits or `role='admin'`. Fix: an `on_auth_user_created` SECURITY DEFINER trigger creates the profile
+  server-side; `revoke insert,update on profiles ... then grant back only (id,username,email)/(username)`
+  (a column-level revoke alone was ineffective against Supabase's default table-wide grant — verified).
+  End-to-end verified: a throwaway signup gets creator/120 from the trigger; tampering credits or role
+  from the user's own session returns 403; username edits still work. Client cleaned up to match. — Mr. K
+
+- **Hid credit balances from users entirely (founder decision).** Removed every user-facing credit display
+  (sidebar, creator dashboard, stat tile) and the "Not enough credits" / "out of credits" messaging that
+  leaked the mechanic. Credits remain fully enforced server-side; users just never see a number. — Mr. K
+
+- **Acted on the Dependency agent's first real catch: bumped vite 5.4.21 → 7.3.6.** OSV flagged vite; the
+  3 vulns in 5.4.x are only fixed in 6+. Upgraded to 7.3.6, `npm audit fix` cleared the transitive
+  advisories → `npm audit` 0 vulnerabilities, build clean, prod deploy verified booting. Hardened
+  `deps_check` to read locked versions from `package-lock.json` (the range-min mismatch caused the flag). — Mr. K
+
 - **Built out the agent factory + a Maintenance wing.** Completed the 5-station pipeline by adding
   standalone Story + Script bench tools; created the agent registry (`src/lib/agents.js`) as the single
   source of truth; built the Factory Floor map (doubles as navigator) and a top-nav Agents entry; added an

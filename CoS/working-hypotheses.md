@@ -1,6 +1,6 @@
 # Working Hypotheses — Mr. K's read on the founder's priorities
 
-_Last updated: 2026-09-18. Mr. K revises this when new evidence shifts the read._
+_Last updated: 2026-09-21. Mr. K revises this when new evidence shifts the read._
 
 ## Current read
 
@@ -22,6 +22,14 @@ _Last updated: 2026-09-18. Mr. K revises this when new evidence shifts the read.
 
 - **He thinks in systems.** Interested in an "AI Agent Factory," an admin brain, and now a named Chief of
   Staff. He's building an operation, not just an app. Capture the vision even when it's not scheduled.
+  _Reinforced 2026-09-21:_ greenlit and drove the entire 12-agent Maintenance wing (P0→P2) in a single
+  session — he invests in durable infrastructure/observability, not just features. Works phase-by-phase
+  ("next," "wave 2," "wave 3") and expects each shipped + verified before moving on.
+
+- **He wants the product opaque to users about its mechanics.** Directed that users "should never know how
+  much credits they have" — hide the metering entirely (enforce server-side, show nothing). Pairs with the
+  security instinct this session (closing the client-set-grant tamper hole). Lean toward: don't surface
+  internal accounting/limits in the UI unless he asks; keep enforcement server-side and invisible.
 
 - **UI clarity matters to him.** Pushed to consolidate scattered tabs into one dashboard; flagged not being
   able to tell which chapter he was on. Small legibility gaps are worth fixing promptly.
