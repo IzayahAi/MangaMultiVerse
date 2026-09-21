@@ -1437,7 +1437,8 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     ...(voices  ? [{id:"voices",  label:"🎭 Voices"}]  : []),
     ...(!voices && script && !loading ? [{id:"gv", label:"✦ Voice profiles", fn:genVoices}] : []),
     ...(script && TRANSLATION_ENABLED ? [{id:"translate", label:"🌐 Translate"}] : []),
-    ...(script ? [{id:"brain", label:"🧠 Story Brain"}] : []),
+    // Story Brain runs in the background (updateBible after each chapter). No dedicated tab — its
+    // recommendations surface in the reader view next to "+ New chapter".
     ...(Object.keys(panelImages).length > 0 ? [{id:"reader", label:"📖 Read"}] : []),
     ...(script && !panelsLoading && Object.keys(panelImages).length === 0 ? [{id:"gp", label:"🎨 Generate panels", fn:genPanels}] : []),
     ...(panelsLoading ? [{id:"gp", label:`🎨 Generating… ${panelProgress}%`}] : []),
@@ -1902,6 +1903,21 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
               {chapterNum===chapterCount && <Btn v="pri" onClick={genChapter} disabled={chapterBusy||panelsLoading} sx={{fontSize:11}}>＋ New chapter</Btn>}
             </div>
           </div>
+          {/* Story Brain recommendations — surfaced here (no separate tab). Only on the latest chapter, where
+              the creator decides what's next. "Write Ch. N" seeds the next chapter with the chosen direction. */}
+          {chapterNum===chapterCount && bible?.next_directions?.length>0 && (
+            <div style={{marginBottom:16,padding:"12px 14px",background:C.purple+"0d",border:`0.5px solid ${C.purple}33`,borderRadius:11}}>
+              <div style={{fontSize:10,color:C.purpleL,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>✦ Story Brain suggests — where to take it next</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {bible.next_directions.map((d,i)=>(
+                  <div key={i} style={{padding:"10px 12px",background:C.card,border:`0.5px solid ${C.border}`,borderRadius:9,display:"flex",gap:10,alignItems:"center"}}>
+                    <div style={{flex:1}}><div style={{fontSize:12.5,fontWeight:600,color:C.text}}>{d.title}</div><div style={{fontSize:11.5,color:C.muted,lineHeight:1.5,marginTop:2}}>{d.pitch}</div></div>
+                    <Btn v="pri" onClick={()=>genChapter(`${d.title}: ${d.pitch}`)} disabled={chapterBusy||panelsLoading} sx={{fontSize:11,whiteSpace:"nowrap"}}>✍ Write Ch. {chapterCount+1}</Btn>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div style={{display:"flex",flexDirection:"column",gap:0,background:"#e9e9e4",borderRadius:12,overflow:"hidden",border:`0.5px solid ${C.border}`}}>
             {/* CHAPTER INTRO — title splash + credits header before the story begins */}
             <div style={{padding:"46px 24px 30px",textAlign:"center",background:"#e9e9e4",borderBottom:"1px solid #d6d6ce"}}>
