@@ -8,6 +8,15 @@ _Mr. K's action backlog. Newest priorities at top. Last updated 2026-09-21._
       demo runs but images fall back to Together (slower, lower fidelity) and story/synthesis calls are
       capped. This is the single thing gating a real tester round. Status: parked ("all we need is money").
 
+## 🔴 Bug — Mr. K logging is broken (owner: founder, 1-line SQL)
+
+- [ ] **`cos_daily_logs` anon insert is RLS-blocked (42501).** Session-end daily logs silently fail via the
+      documented anon path (sibling `cos_inbox` works with the same key, so it's table-specific). This is why
+      synthesis reads "logging discipline collapsed." Fix once in the Supabase SQL editor:
+      `drop policy if exists "cos_daily_logs insert" on public.cos_daily_logs;`
+      `create policy "cos_daily_logs insert" on public.cos_daily_logs for insert with check (true);`
+      Then re-run this session's daily-log POST. Claude can't run DDL.
+
 ## 🟠 Launch prep (do before flipping to real users)
 
 - [x] **Launch armed + runbook written** (2026-09-21, `LAUNCH.md`). Verified the gate is one-switch ready:

@@ -4,6 +4,18 @@ _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
 ## 2026-09-21
 
+- **BUG FOUND: `cos_daily_logs` anon insert is blocked by RLS (42501) — Mr. K's session-end logging has
+  been silently failing.** The documented path (POST with anon key) returns
+  `42501 new row violates row-level security policy`, while the sibling `cos_inbox` insert with the *same*
+  anon key returns 201. So the live RLS on `cos_daily_logs` does NOT match `db/cos_daily_logs.sql` (which
+  declares `for insert with check (true)`) — the file was run before that policy existed, or a restrictive
+  policy shadows it. **This is the real reason the weekly synthesis reads "logging discipline collapsed" —
+  the logs can't be written, not (only) forgotten.** FOUNDER FIX (one-time, Supabase SQL editor):
+  `drop policy if exists "cos_daily_logs insert" on public.cos_daily_logs;`
+  `create policy "cos_daily_logs insert" on public.cos_daily_logs for insert with check (true);`
+  Until then, today's session log lives only in this file (below). Note: a diagnostic probe row
+  ("connectivity probe") was inserted into `cos_inbox` while confirming the anon path — dismiss it in triage. — Mr. K
+
 - **Armed the launch (kept off) + wrote `LAUNCH.md`.** Founder: "arm the launch with fal ready but if not
   we have together to fall back on." Traced the full path: the launch gate is genuinely one-switch
   (`RELEASE_MODE` server + `VITE_RELEASE_MODE` client, both env, + redeploy), and the Fal→Together image
