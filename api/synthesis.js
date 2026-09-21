@@ -42,7 +42,7 @@ export default async function handler(req, res) {
     } catch { return []; }
   };
 
-  const since = new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10);
+  const since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
   const [logs, inbox] = await Promise.all([
     sbGet(`cos_daily_logs?select=log_date,title,body,source&log_date=gte.${since}&order=log_date.desc&limit=60`),
     sbGet(`cos_inbox?select=text,status&status=eq.open&order=created_at.desc&limit=60`),
@@ -53,7 +53,7 @@ export default async function handler(req, res) {
   }
 
   const digest = (
-    `DAILY LOGS (last 14 days):\n` +
+    `DAILY LOGS (last 30 days):\n` +
     (logs || []).map(l => `- [${l.log_date}] ${l.title || ""}: ${(l.body || "").slice(0, 400)}`).join("\n") +
     `\n\nOPEN INBOX:\n` +
     (inbox || []).map(i => `- ${i.text}`).join("\n")

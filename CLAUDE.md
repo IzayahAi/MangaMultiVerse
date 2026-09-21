@@ -75,13 +75,33 @@ work, Mr. K captures it — small captures don't need permission; reserve interr
 session, POST to `${SUPABASE_URL}/rest/v1/cos_inbox` with the anon key and `{ "text": "...", "source":
 "session" }` (the insert policy allows it). Mirror it into `CoS/open-questions.md` for the file-based record.
 
-**Write back at session end.** Append to:
-- `CoS/decisions-log.md` — decisions made (newest at top, sign `— Mr. K`).
-- `CoS/open-questions.md` — new questions raised; move resolved ones into the decisions log.
-- `CoS/working-hypotheses.md` — when new evidence shifts the read on priorities (mark retired hypotheses).
-- **Daily log (Phase 3, live)** — POST a dated session summary to Supabase `cos_daily_logs` (see
-  `db/cos_daily_logs.sql`) with `{ "title": "...", "body": "...", "source": "session" }` (anon key), so it
-  shows on the dashboard's **🎩 Mr. K → Daily Log** tab. Body = what shipped / decided / state of play.
+**Write back at session end — the daily log is MANDATORY, not optional.** Every session that touched
+this project (shipped code, deployed, made a decision, or moved the state of play) MUST close by writing a
+daily-log entry. This is the one step that keeps Mr. K's weekly synthesis running on real signal — skip it
+and his synthesis goes generic. Do it even if this repo's CLAUDE.md wasn't auto-loaded (e.g. the session
+ran from another cwd): the rule still applies to any session that worked on MangaMultiVerse.
+
+1. **Daily log (Phase 3, live) — do this first.** POST a dated session summary to Supabase `cos_daily_logs`
+   with the anon key. Body = what shipped / decided / state of play (a few sentences, specific). It surfaces
+   on the dashboard's **🎩 Mr. K → Daily Log** tab and feeds the weekly synthesis. Copy-paste from the repo:
+
+   ```bash
+   cd "<path-to>/mangaverse-deploy" \
+   && URL="$(grep '^SUPABASE_URL=' .env.local | cut -d= -f2-)" \
+   && ANON="$(grep '^SUPABASE_ANON_KEY=' .env.local | cut -d= -f2-)" \
+   && curl -s -o /dev/null -w "daily log -> HTTP %{http_code}\n" \
+      -X POST "$URL/rest/v1/cos_daily_logs" \
+      -H "apikey: $ANON" -H "Authorization: Bearer $ANON" \
+      -H "Content-Type: application/json" -H "Prefer: return=minimal" \
+      -d '{ "title": "<short title>", "body": "<what shipped / decided / state>", "source": "session" }'
+   ```
+
+   HTTP 201 = logged. (The `cos_daily_logs` insert policy is `with check (true)`, so the public anon key is
+   sufficient — no service key needed.)
+
+2. **`CoS/decisions-log.md`** — decisions made (newest at top, sign `— Mr. K`).
+3. **`CoS/open-questions.md`** — new questions raised; move resolved ones into the decisions log.
+4. **`CoS/working-hypotheses.md`** — when new evidence shifts the read on priorities (mark retired hypotheses).
 
 **Override.** The founder can say "skip CoS," "just answer this," or "no Mr. K today" to bypass the
 auto-load for a single session.
