@@ -1042,18 +1042,28 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     try {
       const BATCH = 6;
       const batches = Math.ceil(panelCount / BATCH);
-      let allPanels = [], title = "", summary = "", endHook = "", recap = prevRecap;
+      let allPanels = [], title = "", summary = "", endHook = "", recap = prevRecap, lastErr = null;
+      // A single batch that THROWS (a JSON-parse failure, a transient provider error) must not discard
+      // the whole chapter. Retry each batch, treat a throw like an empty return, and remember the last
+      // error so it can surface. Callers keep whatever panels already succeeded (break-with-progress).
+      const askBatch = async (prompt) => {
+        for (let a = 0; a < 3; a++) {
+          if (a) await new Promise(r => setTimeout(r, 1500 * a));
+          try { const r = await askClaude(prompt, t => setStream(t), 2, "script"); if (r) return r; }
+          catch (e) { lastErr = e; }
+        }
+        return null;
+      };
       for (let b = 0; b < batches; b++) {
         const start = b * BATCH + 1, end = Math.min(start + BATCH - 1, panelCount);
         setScriptProgress(`Writing Chapter ${N} — panels ${start}-${end}…`);
         if (b === 0) {
-          const r = await askClaude(P_CHAPTER(story, N, end - start + 1, prevRecap, useNarrator, demographic, bibleText()), t => setStream(t), 2, "script");
-          if (!r) { setToast({ msg: "Chapter generation failed — try again.", type: "err" }); return; }
+          const r = await askBatch(P_CHAPTER(story, N, end - start + 1, prevRecap, useNarrator, demographic, bibleText()));
+          if (!r) { setToast({ msg: "Chapter generation failed" + (lastErr ? `: ${lastErr.message}` : " — try again."), type: "err" }); return; }
           title = r.chapter_title || `Chapter ${N}`; summary = r.chapter_summary || ""; endHook = r.chapter_end_hook || "";
           allPanels = r.panels || [];
         } else {
-          let raw = null;
-          for (let a = 0; a < 3 && !raw; a++) { if (a) await new Promise(r => setTimeout(r, 1500 * a)); raw = await askClaude(P_SCRIPT_BATCH(story, start, end, panelCount, recap, useNarrator, demographic), t => setStream(t), 2, "script"); }
+          const raw = await askBatch(P_SCRIPT_BATCH(story, start, end, panelCount, recap, useNarrator, demographic));
           if (!raw) { setToast({ msg: `Chapter ${N} saved up to panel ${allPanels.length} — hit ↻ to finish.`, type: "warn" }); break; }
           allPanels = [...allPanels, ...(Array.isArray(raw) ? raw : raw.panels || [])];
           if (raw.chapter_end_hook) endHook = raw.chapter_end_hook;
@@ -1067,8 +1077,25 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
       const built = { chapter_title: title, chapter_summary: summary, panels: stripNarration(allPanels), chapter_end_hook: endHook };
       setScript(built);
       setEditMode(false);
+      // Persist the new chapter to the chapters table IMMEDIATELY, with explicit values. Don't wait for
+      // the debounced auto-save: it reads async state (chapterNum/script) and is lost if the creator
+      // navigates or reloads first — and the studio draft doesn't carry chapterNum, so a reload would
+      // relabel this as Chapter 1 and its Ch.2 save path would never run. This is why generated chapters
+      // never reached the table before. Save here so the chapter is durable the moment it's written.
+      let persisted = false;
+      const sid = editingId || story?.id;
+      if (sid) {
+        const newChapter = { ...built, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: {} };
+        try {
+          const saved = await onSaveChapter?.(sid, N, newChapter, "draft");
+          persisted = saved !== false;
+          if (persisted) { try { await onSave({ ...story, id: sid, chapters: Math.max(chapterCount, N), author_name: user?.username || story?.author_name || "Anonymous" }); } catch {} }
+        } catch {}
+      }
       updateBible(N, built); // grow the Story Brain (non-blocking)
-      setToast({ msg: `Chapter ${N} written — generate panels, then publish it.`, type: "ok" });
+      setToast(persisted
+        ? { msg: `Chapter ${N} written & saved — generate panels, then publish it.`, type: "ok" }
+        : { msg: `Chapter ${N} written, but the save didn't stick — hit Save as draft.`, type: "warn" });
     } catch (e) { setToast({ msg: "Chapter generation failed: " + e.message, type: "err" }); }
     finally { setChapterBusy(false); setScriptProgress(""); }
   };
