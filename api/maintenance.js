@@ -516,8 +516,18 @@ const CHECKS = {
     let deps = [];
     try {
       const pkg = await (await fetch(`https://raw.githubusercontent.com/${repo}/main/package.json`)).json();
-      const all = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
-      deps = Object.entries(all).map(([name, range]) => ({ name, version: String(range).replace(/^[\^~>=<\s]+/, "").split(" ")[0] }));
+      const names = Object.keys({ ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) });
+      // Prefer the LOCKED version (package-lock.json) over the range minimum — the range min is often an
+      // old version with advisories the lockfile has already moved past (that mismatch is what once made
+      // this check flag a fixed vite). Fall back to the stripped range if there's no lockfile.
+      let locked = {};
+      try {
+        const lock = await (await fetch(`https://raw.githubusercontent.com/${repo}/main/package-lock.json`)).json();
+        const pkgs = lock.packages || {};
+        for (const name of names) locked[name] = pkgs[`node_modules/${name}`]?.version || null;
+      } catch { /* no lockfile → ranges */ }
+      const ranges = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+      deps = names.map((name) => ({ name, version: locked[name] || String(ranges[name]).replace(/^[\^~>=<\s]+/, "").split(" ")[0] }));
     } catch (e) { return { armed: true, ok: false, note: "Couldn't read package.json: " + e.message }; }
 
     let vulnerable = [];

@@ -129,7 +129,14 @@ the prerender decision.
   missing `theme-color` (fixed in index.html). Also improved MangaReader to use each panel's `scene` text
   as descriptive `alt` (free — the text is already generated; vision-alt for scene-less panels is a future
   cost-bearing follow-up). Button-only. No new tables (reuse `health_events`).
-  **Maintenance wing: 12 of 12 agents live across P0/P1/P2. Open follow-up: bump `vite` (16 OSV vulns).**
+  **Maintenance wing: 12 of 12 agents live across P0/P1/P2.**
+
+- **2026-09-21 — Acted on the Dependency agent's first finding: bumped vite + cleared all vulns.** Upgraded
+  `vite` 5.4.21 → **7.3.6** (+ kept `@vitejs/plugin-react` 4.7.0); `npm audit fix` then cleared the
+  transitive advisories (@babel/core, browserslist, nanoid, postcss). `npm audit` → **0 vulnerabilities**;
+  `npm run build` clean. Also hardened `deps_check` to read **locked** versions from `package-lock.json`
+  instead of the package.json range minimum — the mismatch is what made it flag a vite that the lockfile
+  had already moved past. Agent → fix → agent-hardening, closed loop.
 
 ---
 _Source: synthesized from a 3-desk planning pass (Reliability, Growth/SEO, Cost/Data/Security)._
