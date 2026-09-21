@@ -1,4 +1,4 @@
-import { guard, corsHeaders } from "./_guard.js";
+import { guard, corsHeaders, logSpend } from "./_guard.js";
 
 // Thin authenticated proxy for Fal.ai — the browser never holds VITE_FAL_KEY. The client keeps its
 // tuned orchestration (model failover, canvas black-detection, reseed) and calls this per Fal request.
@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   const key = process.env.FAL_KEY;
   if (!key) return res.status(500).json({ error: "FAL_KEY not configured" });
 
-  const g = await guard(req, req.headers["x-mv-action"] || "free");
+  const g = await guard(req, req.headers["x-mv-action"] || "free", "fal");
   if (!g.ok) return res.status(g.status).json({ error: g.error, ...(g.code ? { code: g.code } : {}) });
   if (g.balance != null) res.setHeader("x-mv-balance", String(g.balance));
 
@@ -30,6 +30,7 @@ export default async function handler(req, res) {
     if (op === "run") {
       if (!OK_ENDPOINT.test(endpoint || "")) return res.status(400).json({ error: "bad endpoint" });
       const r = await fetch(`https://fal.run/${endpoint}`, { method: "POST", headers: jsonAuth, body: JSON.stringify(body || {}) });
+      if (r.status === 429) await logSpend({ provider: "fal", action: "fal_429", event: true, meta: { op, endpoint } });
       const data = await r.json().catch(() => ({}));
       return res.status(r.status).json(data);
     }
@@ -47,6 +48,7 @@ export default async function handler(req, res) {
     if (op === "queue_submit") {
       if (!OK_ENDPOINT.test(endpoint || "")) return res.status(400).json({ error: "bad endpoint" });
       const r = await fetch(`https://queue.fal.run/${endpoint}`, { method: "POST", headers: jsonAuth, body: JSON.stringify(body || {}) });
+      if (r.status === 429) await logSpend({ provider: "fal", action: "fal_429", event: true, meta: { op, endpoint } });
       const data = await r.json().catch(() => ({}));
       return res.status(r.status).json(data);
     }

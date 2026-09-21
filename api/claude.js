@@ -17,7 +17,7 @@ export default async function handler(req) {
 
   // Auth + atomic credit charge (skipped while the launch gate is off — see _pricing.js).
   const action = req.headers.get('x-mv-action') || 'misc';
-  const g = await guard(req, action);
+  const g = await guard(req, action, 'anthropic');
   if (!g.ok) {
     return new Response(JSON.stringify({ error: g.error }), {
       status: g.status, headers: { 'Content-Type': 'application/json', ...cors },

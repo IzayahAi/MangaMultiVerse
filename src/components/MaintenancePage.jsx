@@ -11,11 +11,19 @@ export default function MaintenancePage({ token }) {
   const C = useTheme();
   const [checking, setChecking] = useState(false);
   const [res, setRes] = useState(null);
+  const [spendBusy, setSpendBusy] = useState(false);
+  const [spend, setSpend] = useState(null);
 
   const runSelfcheck = async () => {
     setChecking(true); setRes(null);
     setRes(await runMaintenance("selfcheck", token));
     setChecking(false);
+  };
+
+  const runSpend = async () => {
+    setSpendBusy(true); setSpend(null);
+    setSpend(await runMaintenance("spend_summary", token));
+    setSpendBusy(false);
   };
 
   const waveColor = { P0: "#e24b4a", P1: C.gold, P2: C.muted };
@@ -74,6 +82,73 @@ export default function MaintenancePage({ token }) {
           </div>
         )}
       </div>
+
+      {/* 💸 Spend Sentinel */}
+      {(() => {
+        const S = spend?.ok && spend.result;
+        const statusColorMap = { ok: C.teal, warn: C.gold, alert: "#e24b4a" };
+        const w = S?.windows;
+        const Money = ({ v }) => <b style={{ color: C.text }}>${(Number(v) || 0).toFixed(4)}</b>;
+        const Meter = ({ used, budget, label }) => {
+          const pct = budget ? Math.min(100, Math.round((used / budget) * 100)) : 0;
+          const col = pct >= 100 ? "#e24b4a" : pct >= (S?.budget?.warnAt || 0.7) * 100 ? C.gold : C.teal;
+          return (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: C.muted, marginBottom: 3 }}>
+                <span>{label}</span><span><Money v={used} /> <span style={{ color: C.muted }}>/ ${budget}</span></span>
+              </div>
+              <div style={{ height: 6, borderRadius: 4, background: C.border, overflow: "hidden" }}>
+                <div style={{ width: `${pct}%`, height: "100%", background: col }} />
+              </div>
+            </div>
+          );
+        };
+        return (
+          <div style={{ background: C.surf, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: 18, marginBottom: 22 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>💸 Spend Sentinel <span style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginLeft: 6 }}>P0 · live</span></div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>AI spend per provider vs. budget + the Fal 429 rate. Runs hourly by cron; refresh on demand.</div>
+              </div>
+              <Btn v="pri" onClick={runSpend} disabled={spendBusy} sx={{ fontSize: 12 }}>{spendBusy ? <><Spinner size={13} /> Reading…</> : "▶ Refresh spend"}</Btn>
+            </div>
+
+            {spend && !spend.ok && (
+              <div style={{ padding: "10px 14px", background: "#e24b4a18", border: "0.5px solid #e24b4a55", borderRadius: 10, fontSize: 12.5, color: C.text }}>
+                Couldn't read spend: {spend.error}{spend.status ? ` (HTTP ${spend.status})` : ""}. Needs the API layer (<code>vercel dev</code>) + an admin session.
+              </div>
+            )}
+
+            {S && S.armed === false && (
+              <div style={{ fontSize: 12.5, color: C.text }}><Tag c={C.gold}>Not armed</Tag> <span style={{ marginLeft: 8, color: C.muted }}>{S.note}</span></div>
+            )}
+            {S && S.armed && S.table === false && (
+              <div style={{ fontSize: 12.5, color: C.text }}><Tag c={C.gold}>No ledger</Tag> <span style={{ marginLeft: 8, color: C.muted }}>{S.note}</span></div>
+            )}
+
+            {S && S.table && (
+              <div>
+                <div style={{ marginBottom: 12 }}>
+                  <Tag c={statusColorMap[S.status] || C.muted}>{S.status === "ok" ? "✓ Within budget" : S.status === "warn" ? "⚠ Approaching budget" : "🚨 Over budget"}</Tag>
+                  {S.alerted && <span style={{ fontSize: 11, color: C.muted, marginLeft: 8 }}>alert sent to Mr. K inbox</span>}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+                  <Meter used={w["1h"].usd} budget={S.budget.hourlyUsd} label="Last hour" />
+                  <Meter used={w["24h"].usd} budget={S.budget.dailyUsd} label="Last 24h" />
+                </div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>By provider (24h): {Object.keys(w["24h"].byProvider).length
+                  ? Object.entries(w["24h"].byProvider).sort((a, b) => b[1] - a[1]).map(([p, v]) => <span key={p} style={{ marginRight: 12 }}>{p} <Money v={v} /></span>)
+                  : <span>no spend yet</span>}</div>
+                <div style={{ fontSize: 12, color: C.muted, display: "flex", gap: 16, flexWrap: "wrap" }}>
+                  <span>7d total <Money v={w["7d"].usd} /></span>
+                  <span>Fal 429s: {S.fal429["1h"]}·1h / {S.fal429["24h"]}·24h · rate <b style={{ color: S.fal429.rate24h >= 0.3 ? C.gold : C.text }}>{Math.round(S.fal429.rate24h * 100)}%</b></span>
+                  <span>{S.rowsConsidered} ledger rows · {spend.ms}ms</span>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Roadmap */}
       {["P0", "P1", "P2"].map((wave) => {

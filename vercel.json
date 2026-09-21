@@ -3,6 +3,7 @@
     { "source": "/(.*)", "destination": "/" }
   ],
   "crons": [
-    { "path": "/api/synthesis", "schedule": "0 14 * * 1" }
+    { "path": "/api/synthesis", "schedule": "0 14 * * 1" },
+    { "path": "/api/maintenance?check=spend_summary", "schedule": "0 * * * *" }
   ]
 }

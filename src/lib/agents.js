@@ -33,7 +33,7 @@ export const CONTROL_ROOM = [
 // (see MAINTENANCE_AGENTS.md); they build on the Phase 0 runner (api/maintenance.js).
 // `wave` = P0/P1/P2 build priority; `status` = planned | building | live.
 export const MAINTENANCE = [
-  { id: "spend",     name: "Spend Sentinel",           icon: "💸", wave: "P0", status: "planned", blurb: "Per-provider AI spend + Fal 429 rate vs. budget; alerts on runaway burn." },
+  { id: "spend",     name: "Spend Sentinel",           icon: "💸", wave: "P0", status: "live",    blurb: "Per-provider AI spend + Fal 429 rate vs. budget; alerts on runaway burn." },
   { id: "deploy",    name: "Deploy Sentinel",          icon: "🚀", wave: "P0", status: "planned", blurb: "After each push, verify the deploy boots + every proxy + Supabase respond." },
   { id: "tamper",    name: "Credit-Tamper Watch",      icon: "🔓", wave: "P0", status: "planned", blurb: "Detect the client-set-grant tamper hole + demo-cap evasion." },
   { id: "seo",       name: "SEO & Metadata Agent",     icon: "🔍", wave: "P0", status: "planned", blurb: "Audit + generate per-story OG/meta (the SPA ships zero OG tags)." },

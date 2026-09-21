@@ -2,7 +2,7 @@
 // functions. The security win — provider keys living only on the server — is ALWAYS on; the auth +
 // credit ENFORCEMENT is what the RELEASE_MODE gate toggles, so the demo keeps working until launch.
 
-import { RELEASE_MODE, costFor, DEMO_LIMITS } from "./_pricing.js";
+import { RELEASE_MODE, costFor, usdFor, DEMO_LIMITS } from "./_pricing.js";
 
 const SB_URL = process.env.SUPABASE_URL;
 const SB_ANON = process.env.SUPABASE_ANON_KEY;
@@ -13,6 +13,21 @@ function clientIp(req) {
   const get = k => (h?.get ? h.get(k) : h?.[k]);
   const xff = get("x-forwarded-for");
   return (xff ? String(xff).split(",")[0].trim() : (get("x-real-ip") || "local")) || "local";
+}
+
+// ── 💸 Spend Sentinel: best-effort spend ledger. Every charged provider call writes one row to
+// cost_ledger (see db/cost_ledger.sql) so the Sentinel can trend spend + watch the Fal 429 rate.
+// Fire-and-forget with the anon key (same pattern as error_log); never throws, never blocks the paid
+// work if the table isn't set up yet. Works from both edge (fetch) and node runtimes.
+export async function logSpend({ provider, action, credits = 0, usd = 0, event = false, ip = null, meta = {} }) {
+  if (!SB_URL || !SB_ANON || !provider || !action) return;
+  try {
+    await fetch(`${SB_URL}/rest/v1/cost_ledger`, {
+      method: "POST",
+      headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ provider, action, credits, usd, event, ip, meta }),
+    });
+  } catch { /* best-effort — a missing table or transient error never breaks generation */ }
 }
 
 // Demo-mode per-IP daily rate limit (only used when RELEASE_MODE is off). Best-effort: if the
@@ -58,12 +73,32 @@ export function corsHeaders(req) {
   };
 }
 
-// Verify the caller and atomically charge `action`'s cost. Returns:
+// Record a charged action to the spend ledger (best-effort). Skips `free` (retries/polls) and `brain`
+// with no cost — the Fal 429 rate captures retry burn. `provider` is passed by each proxy.
+async function recordSpend(req, action, provider) {
+  if (!provider || action === "free") return;
+  const usd = usdFor(action);
+  if (!usd) return; // nothing to trend (e.g. cost-0 actions)
+  await logSpend({
+    provider,
+    action,
+    usd,
+    credits: RELEASE_MODE ? costFor(action) : 0,
+    ip: clientIp(req),
+  });
+}
+
+// Verify the caller and atomically charge `action`'s cost, then log the spend. Returns:
 //   { ok:true, balance }            — proceed (balance is null when the gate is off)
 //   { ok:false, status, error }     — 401 (no/invalid token) or 402 (insufficient credits)
-export async function guard(req, action) {
+// `provider` (anthropic|fal|together|elevenlabs) is only used for the spend ledger.
+export async function guard(req, action, provider) {
   // Demo mode: no sign-in wall, but a per-IP daily cap keeps costs sane. Launch mode: auth + credits.
-  if (!RELEASE_MODE) return demoLimit(req, action);
+  if (!RELEASE_MODE) {
+    const d = await demoLimit(req, action);
+    if (d.ok) await recordSpend(req, action, provider);
+    return d;
+  }
 
   const token = getToken(req);
   if (!token) return { ok: false, status: 401, error: "Sign in required" };
@@ -80,6 +115,7 @@ export async function guard(req, action) {
     if (!r.ok) return { ok: false, status: 500, error: `Credit check failed (${r.status})` };
     const bal = await r.json(); // scalar int, or null when balance was insufficient
     if (bal === null || bal === undefined) return { ok: false, status: 402, error: "Out of credits" };
+    await recordSpend(req, action, provider);
     return { ok: true, balance: bal };
   } catch (e) {
     return { ok: false, status: 500, error: "Credit check error: " + e.message };

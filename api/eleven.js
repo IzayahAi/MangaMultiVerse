@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   const key = process.env.ELEVENLABS_KEY;
   if (!key) return res.status(500).json({ error: "ELEVENLABS_KEY not configured" });
 
-  const g = await guard(req, "voice_tts");
+  const g = await guard(req, "voice_tts", "elevenlabs");
   if (!g.ok) return res.status(g.status).json({ error: g.error });
   if (g.balance != null) res.setHeader("x-mv-balance", String(g.balance));
 

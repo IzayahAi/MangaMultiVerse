@@ -21,6 +21,33 @@ export const LIMITS = {
   maxLanguagesPerPublish: 12,
 };
 
+// ── 💸 Spend Sentinel: ESTIMATED provider $ per action (US dollars). These are rough per-call estimates,
+// NOT authoritative billing — the Spend Sentinel uses them to trend spend and flag runaway burn from our
+// own ledger; true dollars come from the provider dashboards. Tune here as real usage data comes in.
+// Keyed by the same action names as COSTS. `free` (retries/polls) is deliberately 0 — the retry-storm
+// signal is captured by the Fal 429 rate instead, so retries don't need per-call costing.
+export const USD_COST = {
+  story: 0.03,      // multi-call agent story build (Anthropic)
+  script: 0.02,     // chapter script (Anthropic)
+  char: 0.005,      // character brief (Anthropic)
+  voices: 0.005,    // voice profiles (Anthropic)
+  translate: 0.008, // per language, per chapter (Anthropic)
+  brain: 0.01,      // admin Brain / analysis calls (Anthropic)
+  panel: 0.02,      // one panel image (Fal flux, or Together on fallback)
+  lora: 0.4,        // character LoRA training (Fal)
+  voice_tts: 0.004, // one audio clip (ElevenLabs)
+  misc: 0.005,
+  free: 0,          // retries / failover / status polls — not costed per-call (see note above)
+};
+
+// Rough spend budget the Spend Sentinel measures against. Tune to what a tester round should cost.
+// status: ok < warnAt·budget ≤ warn < budget ≤ alert.
+export const BUDGET = { hourlyUsd: 5, dailyUsd: 30, warnAt: 0.7 };
+
+export function usdFor(action) {
+  return USD_COST[action] ?? USD_COST.misc;
+}
+
 // Demo-mode per-IP DAILY caps (only enforced while RELEASE_MODE is off). At 50-panel chapters (~60
 // images each), 300 images/day ≈ ~5 chapters/day per visitor — enough to make real progress while still
 // capping runaway/guest abuse. textPerDay raised to match so text isn't the bottleneck. Tune here.

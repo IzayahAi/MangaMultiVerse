@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   if (!apiKey) { return res.status(500).json({ error: 'TOGETHER_API_KEY not configured' }); }
 
   // Auth + atomic credit charge (skipped while the launch gate is off).
-  const g = await guard(req, req.headers['x-mv-action'] || 'panel');
+  const g = await guard(req, req.headers['x-mv-action'] || 'panel', 'together');
   if (!g.ok) { return res.status(g.status).json({ error: g.error }); }
   if (g.balance != null) res.setHeader('x-mv-balance', String(g.balance));
 
