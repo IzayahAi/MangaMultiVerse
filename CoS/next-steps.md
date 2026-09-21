@@ -8,14 +8,12 @@ _Mr. K's action backlog. Newest priorities at top. Last updated 2026-09-21._
       demo runs but images fall back to Together (slower, lower fidelity) and story/synthesis calls are
       capped. This is the single thing gating a real tester round. Status: parked ("all we need is money").
 
-## 🔴 Bug — Mr. K logging is broken (owner: founder, 1-line SQL)
+## ✅ Fixed 2026-09-21 — Mr. K logging RLS
 
-- [ ] **`cos_daily_logs` anon insert is RLS-blocked (42501).** Session-end daily logs silently fail via the
-      documented anon path (sibling `cos_inbox` works with the same key, so it's table-specific). This is why
-      synthesis reads "logging discipline collapsed." Fix once in the Supabase SQL editor:
-      `drop policy if exists "cos_daily_logs insert" on public.cos_daily_logs;`
-      `create policy "cos_daily_logs insert" on public.cos_daily_logs for insert with check (true);`
-      Then re-run this session's daily-log POST. Claude can't run DDL.
+- [x] **`cos_daily_logs` anon insert was RLS-blocked (42501); now returns 201.** Founder ran the corrected
+      insert policy (`with check (true)`) on project `kkpzbfhnpvhnykxitnon`; verified with a live anon POST.
+      This was the true cause of synthesis reading "logging discipline collapsed" — the anon insert path had
+      never worked; only service-key writes (backfill + cron read) did. Session logs now post cleanly.
 
 ## 🟠 Launch prep (do before flipping to real users)
 
@@ -23,9 +21,10 @@ _Mr. K's action backlog. Newest priorities at top. Last updated 2026-09-21._
       two env vars (`RELEASE_MODE` server + `VITE_RELEASE_MODE` client) + redeploy. Confirmed the Fal→Together
       image fallback is already built and robust (`src/lib/claude.js` ~L597–711) — no code needed. `LAUNCH.md`
       has the exact flip sequence, verify curls, and rollback.
-- [ ] **FOUNDER — run `db/spend_credits.sql` in Supabase.** The one hard blocker: without it, flipping the
-      gate 500s every paid action ("Credit check failed (404)"). Claude can't run DDL. This is the single
-      step between "armed" and "flip-ready." See `LAUNCH.md`.
+- [~] **FOUNDER — `db/spend_credits.sql` ran, but the RPC isn't live yet (PGRST202).** The function was
+      created but PostgREST can't see it — stale schema cache. One-liner in the Supabase SQL editor to
+      finish: `NOTIFY pgrst, 'reload schema';` (or toggle any API setting to force a reload). Until the
+      probe returns 401/403 instead of 404, flipping the gate will still 500 every paid action. See `LAUNCH.md`.
 - [ ] **Before flipping:** set both env vars together + redeploy (client gate is build-time). Do at launch,
       not before.
 - [ ] **Harden before PUBLIC (not before a trusted tester round):** move the initial credit grant from the
