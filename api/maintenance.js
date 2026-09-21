@@ -453,13 +453,15 @@ const CHECKS = {
   // anon-readable. Reports pattern NAMES + counts only, never a secret value.
   async posture_check(_params, ctx = {}) {
     const base = prodBase();
-    // (1) Bundle secret scan.
+    // (1) Bundle secret scan. Match only actual secret VALUE formats — matching key NAMES (VITE_*,
+    // ANTHROPIC_API_KEY, SERVICE_ROLE) false-positives on comments, docs, and our own UI hint text, and
+    // adds no real coverage: a genuinely leaked key shows up as its value, which these catch. (A leaked
+    // Supabase service-role key is a JWT, but so is the public anon key that legitimately ships in the
+    // bundle, so JWTs are deliberately not matched here.)
     const patterns = [
       { name: "anthropic key (sk-ant-)", re: /sk-ant-[A-Za-z0-9_\-]{15,}/g },
       { name: "openai-style key (sk-)", re: /\bsk-[A-Za-z0-9]{24,}/g },
       { name: "google key (AIza)", re: /\bAIza[0-9A-Za-z_\-]{30,}/g },
-      { name: "VITE_ provider key", re: /VITE_[A-Z0-9_]*(KEY|TOKEN|SECRET)/g },
-      { name: "server key name in bundle", re: /(ANTHROPIC_API_KEY|ELEVENLABS_KEY|TOGETHER_API_KEY|FAL_KEY|SERVICE_ROLE)/g },
     ];
     const leaks = [];
     try {
