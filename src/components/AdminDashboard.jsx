@@ -5,6 +5,7 @@ import BrainPage from "./BrainPage.jsx";
 import StoryBrainsPage from "./StoryBrainsPage.jsx";
 import ErrorsPage from "./ErrorsPage.jsx";
 import ErrorAgent from "./ErrorAgent.jsx";
+import MaintenancePage from "./MaintenancePage.jsx";
 import AgentsPage from "./AgentsPage.jsx";
 import ModerationPage from "./ModerationPage.jsx";
 import MrKPage from "./MrKPage.jsx";
@@ -29,6 +30,7 @@ export default function AdminDashboard({ auth, published = [], db, onOpenStory, 
       { id: "ops", label: "Ops Brain", icon: "◈" },
       { id: "agents", label: "AI Agents", icon: "✦" },
       { id: "erragent", label: "Error Agent", icon: "🩺" },
+      { id: "maintenance", label: "Maintenance", icon: "🔧" },
       { id: "errors", label: "Errors", icon: "🐞" },
     ] }] : []),
   ];
@@ -75,6 +77,7 @@ export default function AdminDashboard({ auth, published = [], db, onOpenStory, 
       case "ops": return isAdmin ? <BrainPage auth={auth} published={published} db={db} /> : <Overview />;
       case "agents": return isAdmin ? <AgentsPage /> : <Overview />;
       case "erragent": return isAdmin ? <ErrorAgent token={auth?.token} /> : <Overview />;
+      case "maintenance": return isAdmin ? <MaintenancePage token={auth?.token} /> : <Overview />;
       case "errors": return isAdmin ? <ErrorsPage token={auth?.token} /> : <Overview />;
       default: return <Overview />;
     }

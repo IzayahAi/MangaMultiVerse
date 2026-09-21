@@ -151,6 +151,22 @@ export function logError(payload = {}) {
   } catch {}
 }
 
+// Call the secured maintenance runner (api/maintenance.js). Admin-only; `token` = admin JWT.
+// Returns the runner's JSON, or { ok:false, error } on failure (e.g. runner unreachable).
+export async function runMaintenance(check = "selfcheck", token) {
+  try {
+    const r = await fetch("/api/maintenance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ check }),
+    });
+    const data = await r.json().catch(() => ({}));
+    return r.ok ? data : { ok: false, error: data.error || `HTTP ${r.status}`, status: r.status };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 // ── Moderation: readers report published stories; admins review + hide/restore (see db/reports.sql).
 export async function submitReport(storyId, storyTitle, reason, reporterId) {
   if (DEMO || !storyId) return false;

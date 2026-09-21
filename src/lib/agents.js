@@ -29,6 +29,24 @@ export const CONTROL_ROOM = [
   { id: "erragent", name: "Error Agent", icon: "🩺", role: "Reliability",    blurb: "Reads the error log, clusters failures, and triages what's breaking and why.", dashTab: "erragent" },
 ];
 
+// The Maintenance wing — agents that keep the app/website healthy. Planned roadmap
+// (see MAINTENANCE_AGENTS.md); they build on the Phase 0 runner (api/maintenance.js).
+// `wave` = P0/P1/P2 build priority; `status` = planned | building | live.
+export const MAINTENANCE = [
+  { id: "spend",     name: "Spend Sentinel",           icon: "💸", wave: "P0", status: "planned", blurb: "Per-provider AI spend + Fal 429 rate vs. budget; alerts on runaway burn." },
+  { id: "deploy",    name: "Deploy Sentinel",          icon: "🚀", wave: "P0", status: "planned", blurb: "After each push, verify the deploy boots + every proxy + Supabase respond." },
+  { id: "tamper",    name: "Credit-Tamper Watch",      icon: "🔓", wave: "P0", status: "planned", blurb: "Detect the client-set-grant tamper hole + demo-cap evasion." },
+  { id: "seo",       name: "SEO & Metadata Agent",     icon: "🔍", wave: "P0", status: "planned", blurb: "Audit + generate per-story OG/meta (the SPA ships zero OG tags)." },
+  { id: "sitemap",   name: "Sitemap & Discovery",      icon: "🗺️", wave: "P0", status: "planned", blurb: "Emit sitemap.xml / robots.txt / llms.txt so crawlers find the catalog." },
+  { id: "uptime",    name: "Uptime Monitor",           icon: "📡", wave: "P1", status: "planned", blurb: "Continuous liveness of prod + proxies + Supabase + synthesis freshness." },
+  { id: "links",     name: "Broken-Link Checker",      icon: "🩹", wave: "P1", status: "planned", blurb: "Dead covers, missing chapters, orphaned Storage refs." },
+  { id: "catalog",   name: "Catalog Health Scanner",   icon: "📚", wave: "P1", status: "planned", blurb: "Score published stories (stubs, generic titles, thin taglines)." },
+  { id: "integrity", name: "Data-Integrity Checker",   icon: "🧬", wave: "P1", status: "planned", blurb: "Orphaned/inconsistent rows that silently burn regen credits." },
+  { id: "posture",   name: "Security Posture Auditor", icon: "🛡️", wave: "P1", status: "planned", blurb: "RLS on for every table + no secret leaks in the bundle." },
+  { id: "deps",      name: "Dependency & Backup",      icon: "📦", wave: "P2", status: "planned", blurb: "npm audit triaged by Claude + a restorable Supabase backup exists." },
+  { id: "a11y",      name: "Accessibility & Alt-Text", icon: "♿", wave: "P2", status: "planned", blurb: "a11y audit + vision-generated alt-text for covers/panels." },
+];
+
 export const AGENTS = [...LINE, ...CONTROL_ROOM];
 
 // A station's surface label, e.g. "Studio + bench" or "Studio only".
