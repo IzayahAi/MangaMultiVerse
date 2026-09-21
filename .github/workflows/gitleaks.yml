@@ -1,0 +1,22 @@
+name: gitleaks
+
+# Secret-scanning backstop: scans every push and pull request so a leaked key can never
+# sit in the repo history undetected, even if a local pre-commit hook was skipped.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  scan:
+    name: gitleaks scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,25 @@
+#!/usr/bin/env sh
+# Pre-commit secret scan — blocks a commit that stages a secret (API key, token, etc.).
+# Requires gitleaks: https://github.com/gitleaks/gitleaks
+#   Install once:  winget install gitleaks   (or scoop/choco/brew install gitleaks)
+#   Enable once (from the repo root):  git config core.hooksPath scripts/hooks
+#
+# If gitleaks isn't installed, the hook warns and lets the commit through — the CI workflow
+# (.github/workflows/gitleaks.yml) still scans everything that reaches GitHub, so nothing is
+# silently unprotected.
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "⚠ gitleaks not installed — skipping local secret scan (CI still scans on push)."
+  echo "  Install it once with:  winget install gitleaks   then future commits are scanned."
+  exit 0
+fi
+
+gitleaks protect --staged --redact --no-banner
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "✖ gitleaks found a potential secret in your staged changes — commit blocked."
+  echo "  Review the finding above. If it is a genuine false positive, add an allowlist"
+  echo "  entry to .gitleaks.toml, then re-commit."
+  exit 1
+fi
+exit 0

@@ -37,6 +37,19 @@ Guidance for Claude Code / Cowork sessions working in this repo.
 - Claude cannot run DDL in Supabase (anon key can't). Claude writes `db/*.sql`; the user runs it; Claude
   verifies via REST with the anon key.
 
+### Secret scanning (gitleaks)
+
+Two layers keep a provider key from ever landing in the repo:
+- **Local pre-commit hook** (`scripts/hooks/pre-commit`) runs `gitleaks protect --staged` and blocks a
+  commit that stages a secret. **One-time setup:** install the binary (`winget install gitleaks`, or
+  scoop/choco/brew) and enable the hook path from the repo root: `git config core.hooksPath scripts/hooks`.
+  Without the binary the hook warns and lets the commit through — the CI layer still catches it.
+- **CI backstop** (`.github/workflows/gitleaks.yml`) scans every push + PR on GitHub, so nothing reaches
+  the history unscanned even if the local hook was skipped. No local dependency.
+
+False positives → add an allowlist entry to a `.gitleaks.toml` at the repo root (none needed today; the
+default ruleset runs clean).
+
 ## Conventions
 
 - Prefer minimal, targeted edits over rewrites. Match surrounding style (inline JSX, no TS).
