@@ -83,7 +83,7 @@ export const PLANS = {
   },
   studio: {
     // Everything EXCEPT premium art: all features + LoRA + high credit volume, on standard (Lightning) art.
-    id: "studio", name: "Studio", priceUsd: 30, credits: 16000, interval: "month", stripePrice: process.env.STRIPE_PRICE_STUDIO || null,
+    id: "studio", name: "Studio", priceUsd: 30, credits: 20000, interval: "month", stripePrice: process.env.STRIPE_PRICE_STUDIO || null,
     features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, premiumArt: false, fullAccess: false },
   },
   studio_pro: {
