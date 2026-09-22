@@ -4,6 +4,17 @@ _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
 ## 2026-09-22
 
+- **Pricing reassessed + finalized after the ~20× image-cost drop.** A 50-panel chapter now costs ~$0.05
+  (Juggernaut Lightning, was ~$1 on Fal), so the old tight tiers were reworked for growth. Final:
+  **Pro $15/mo · 8,000 cr (~145 ch/mo)**, **Studio $30/mo · 16,000 cr (~290 ch/mo, "most popular")**,
+  **Studio Pro $100/YEAR · 60,000 cr (~1,090 ch/yr)** — the annual value/commitment deal (dialed from a
+  proposed 100k to 60k to keep ~40% margin even if maxed). Top-ups collapsed from 4 packs to **one: 5,000
+  cr / $10** (~500 cr/$, matches the Pro sub — the old packs were ~60–83 cr/$, an awkward mismatch). Removed
+  translation from the paid perks (it's free for all readers now). All tiers ~43–52% margin even at max
+  usage; realistically much higher. Demo grant raised to 700 to cover the new 3×3×50 cap. **Pre-billing
+  check flagged: confirm the real per-panel cost via Spend Sentinel `cost_ledger` (per-MP vs 1 MP-minimum
+  billing doubles cost) before flipping Stripe on.** Stripe setup is now 4 products (3 subs + 1 pack). — Mr. K
+
 - **Translation model: every manga, every language, every reader — free + globally cached.** Founder wants
   max reach ("all mangas possible for everyone in every language … to get more views"), and flagged
   translation as "really expensive." Root cause found: it already uses cheap Haiku (~$0.008/lang/chapter),
