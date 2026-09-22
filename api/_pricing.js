@@ -77,12 +77,12 @@ export const PLANS = {
     features: { translate: false, voice: false, maxLangs: 1, lora: false, maxStories: 0, fullAccess: false },
   },
   pro: {
-    id: "pro", name: "Pro", priceUsd: 15, credits: 8000, interval: "month", stripePrice: process.env.STRIPE_PRICE_PRO || null,
-    features: { translate: true, voice: true, maxLangs: 12, lora: false, maxStories: null, premiumArt: false, fullAccess: false },
+    id: "pro", name: "Pro", priceUsd: 15, credits: 5000, interval: "month", stripePrice: process.env.STRIPE_PRICE_PRO || null,
+    features: { translate: true, voice: true, maxLangs: 12, lora: false, maxStories: null, premiumArt: true, fullAccess: false },
   },
   studio: {
-    id: "studio", name: "Studio", priceUsd: 30, credits: 16000, interval: "month", stripePrice: process.env.STRIPE_PRICE_STUDIO || null,
-    features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, premiumArt: false, fullAccess: false },
+    id: "studio", name: "Studio", priceUsd: 30, credits: 10000, interval: "month", stripePrice: process.env.STRIPE_PRICE_STUDIO || null,
+    features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, premiumArt: true, fullAccess: false },
   },
   studio_pro: {
     // Annual plan — the premium tier. Its real differentiator is `premiumArt`: panels render on Juggernaut

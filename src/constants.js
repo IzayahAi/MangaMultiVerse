@@ -60,8 +60,8 @@ export const DEMO_MAX_CHAPTERS = 3;
 // Pricing display (client mirror of api/_pricing.js PLANS/PACKS — display only, no Stripe IDs/secrets).
 // `id` is what the client sends to /api/stripe-checkout; the server maps it to the real Stripe price.
 export const PLAN_TIERS = [
-  { id: "pro",        name: "Pro",        priceUsd: 15,  credits: 8000,   perks: ["8,000 credits / month", "Unlimited stories & chapters", "Character voices", "Ad-free reading"] },
-  { id: "studio",     name: "Studio",     priceUsd: 30,  credits: 16000,  perks: ["16,000 credits / month", "Everything in Pro", "LoRA character training", "Priority generation"], highlight: true },
+  { id: "pro",        name: "Pro",        priceUsd: 15,  credits: 5000,   perks: ["5,000 credits / month", "Premium art — Juggernaut Pro", "Unlimited stories & chapters", "Character voices", "Ad-free reading"] },
+  { id: "studio",     name: "Studio",     priceUsd: 30,  credits: 10000,  perks: ["10,000 credits / month", "Everything in Pro", "LoRA character training", "Priority generation"], highlight: true },
   { id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 60000, interval: "year", perks: ["60,000 credits for a full year", "✦ Premium art — Juggernaut Pro (best quality)", "Everything in Studio + LoRA", "Best value — one year, one price"] },
 ];
 export const TOPUP_PACKS = [
@@ -72,8 +72,8 @@ export const TOPUP_PACKS = [
 // `adFree` = no interstitial ads while reading (paid perk).
 export const PLAN_FEATURES = {
   free:       { translate: false, voice: false, maxLangs: 1,  lora: false, maxStories: 0,    adFree: false, premiumArt: false, fullAccess: false },
-  pro:        { translate: true,  voice: true,  maxLangs: 12, lora: false, maxStories: null, adFree: true,  premiumArt: false, fullAccess: false },
-  studio:     { translate: true,  voice: true,  maxLangs: 12, lora: true,  maxStories: null, adFree: true,  premiumArt: false, fullAccess: false },
+  pro:        { translate: true,  voice: true,  maxLangs: 12, lora: false, maxStories: null, adFree: true,  premiumArt: true,  fullAccess: false },
+  studio:     { translate: true,  voice: true,  maxLangs: 12, lora: true,  maxStories: null, adFree: true,  premiumArt: true,  fullAccess: false },
   studio_pro: { translate: true,  voice: true,  maxLangs: 12, lora: true,  maxStories: null, adFree: true,  premiumArt: true,  fullAccess: true  },
 };
 
