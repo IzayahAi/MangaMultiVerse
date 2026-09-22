@@ -22,10 +22,10 @@ export default function AdminDashboard({ auth, published = [], db, onOpenStory, 
   const NAV = [
     { group: "Yours", items: [
       { id: "overview", label: "Overview", icon: "▦" },
-      { id: "mrk", label: "Mr. K", icon: "🎩" },
       { id: "brains", label: "Story Brains", icon: "🧠" },
     ] },
     ...(isAdmin ? [{ group: "Platform", items: [
+      { id: "mrk", label: "Mr. K", icon: "🎩" },
       { id: "reports", label: "Reports", icon: "⚑" },
       { id: "ops", label: "Ops Brain", icon: "◈" },
       { id: "agents", label: "AI Agents", icon: "✦" },
@@ -71,7 +71,7 @@ export default function AdminDashboard({ auth, published = [], db, onOpenStory, 
 
   const content = () => {
     switch (section) {
-      case "mrk": return <MrKPage token={auth?.token} />;
+      case "mrk": return isAdmin ? <MrKPage token={auth?.token} /> : <Overview />;
       case "brains": return <StoryBrainsPage stories={stories} onOpenStory={onOpenStory} />;
       case "reports": return isAdmin ? <ModerationPage token={auth?.token} onModerated={onModerated} /> : <Overview />;
       case "ops": return isAdmin ? <BrainPage auth={auth} published={published} db={db} /> : <Overview />;
