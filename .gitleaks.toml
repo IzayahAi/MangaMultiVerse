@@ -1,0 +1,10 @@
+# gitleaks config — extends the default ruleset, with an allowlist for false positives.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Supabase ANON (public) key + URL are public by design: they ship in the browser bundle and data is protected by RLS, not by hiding these. The hardcoded fallback in src/lib/supabase.js is intentional (see the comment there)."
+# The specific public anon key for the kkpzbfhnpvhnykxitnon project (role:anon). NOT a secret.
+regexes = [
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtrcHpiZmhucHZobnlreGl0bm9uIiwicm9sZSI6ImFub24i[A-Za-z0-9_.\-]+''',
+]
