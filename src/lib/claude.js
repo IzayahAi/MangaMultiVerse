@@ -9,6 +9,10 @@ let _onBalance = null;
 // Circuit breaker: once Fal rate-limits the account (429), skip Fal for this cooldown window and go
 // straight to Together — otherwise every remaining panel re-hammers the throttled account (429 flood).
 let _falCooldownUntil = 0;
+// Fal is DEMOTED (2026-09-22). The panel image chain is now Together (Juggernaut Lightning Flux) primary →
+// DeepInfra FLUX-schnell fallback — ~10x cheaper than Fal at the same fast-Flux quality. Fal stays fully
+// wired but OFF by default; set VITE_FAL_ENABLED=true (client build env) to bring it back with no code change.
+const FAL_ENABLED = ((typeof import.meta !== "undefined" && import.meta.env?.VITE_FAL_ENABLED) ?? "false") === "true";
 export function setApiToken(token, onBalance) { _apiToken = token || null; if (onBalance) _onBalance = onBalance; }
 function apiHeaders(action, extra = {}) {
   const h = { "Content-Type": "application/json", ...extra };
@@ -570,7 +574,9 @@ export async function generatePanelImage(panelDescription, characterContext, sty
   const chargeAction = () => (_charged ? "free" : (_charged = true, "panel"));
 
   // ── LoRA path: if this character has a trained model, use flux-lora for LOCKED identity. ──
-  if (lora?.url) {
+  // Requires Fal (flux-lora has no Together/DeepInfra equivalent), so it's gated behind FAL_ENABLED —
+  // with Fal demoted, a LoRA request falls through to the normal Together/DeepInfra chain.
+  if (lora?.url && FAL_ENABLED) {
     const trig = lora.trigger || "";
     const loraPrompt = hasChars
       ? `${styleModifier}. ${QUALITY}. Storytelling panel — depict the full scene, its setting/environment, and the action: ${desc}. In this scene: ${trig} (the main character — ${chars}). Show the characters interacting with the environment through body language and a varied cinematic camera angle, NOT a plain centered portrait. Only the described people are present. ANATOMY MUST BE CORRECT: each person has exactly two arms, two legs, one head, and hands with exactly five fingers, in natural proportions — no extra or missing limbs, no extra fingers, no distorted or backwards hands. Clean manga line art with ABSOLUTELY NO written text anywhere in the image — no kanji, no kana, no Japanese or Chinese characters, no letters, no numbers, no captions, no sound-effect text, no speech bubbles, no watermark, no signature.`
@@ -597,7 +603,8 @@ export async function generatePanelImage(panelDescription, characterContext, sty
   // ── PROVIDER: Fal.ai via the /api/fal proxy. flux/schnell is fast but runs an INPUT content checker
   //    that 422s on some prompts; fast-sdxl has no such input filter, so it's the reliable fallback. ──
   // Skip Fal entirely while the account is in its rate-limit cooldown (set by a prior 429) — go to Together.
-  if (Date.now() >= _falCooldownUntil) {
+  // Also skipped whenever Fal is demoted (FAL_ENABLED=false, the default) so Together is the primary provider.
+  if (FAL_ENABLED && Date.now() >= _falCooldownUntil) {
     const box = { width: clampDim(dims.w), height: clampDim(dims.h) };
     const M_FLUX = { name: 'flux/schnell', endpoint: 'fal-ai/flux/schnell', body: { prompt, image_size: box, num_inference_steps: 6, num_images: 1, enable_safety_checker: false, ...(hasSeed ? { seed } : {}) } };
     const M_SDXL = { name: 'fast-sdxl', endpoint: 'fal-ai/fast-sdxl', body: { prompt, negative_prompt: NEGATIVE, image_size: box, num_inference_steps: 25, num_images: 1, enable_safety_checker: false, ...(hasSeed ? { seed } : {}) } };
@@ -658,8 +665,10 @@ export async function generatePanelImage(panelDescription, characterContext, sty
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
-      // Already charged during the Fal attempts above, so this fallback runs as 'free'.
-      const res = await fetch('/api/image', { method: 'POST', headers: apiHeaders('free'), body: JSON.stringify({ prompt, style }), signal: ctrl.signal });
+      // Together is now the PRIMARY provider (Fal demoted), so the first call charges 'panel' (deducts the
+      // credit + counts the per-IP demo cap); retries/failover run 'free'. chargeAction() flips after the
+      // first call, so a logical panel is charged/counted exactly once across all providers.
+      const res = await fetch('/api/image', { method: 'POST', headers: apiHeaders(chargeAction()), body: JSON.stringify({ prompt, style }), signal: ctrl.signal });
       clearTimeout(timer);
       if (res.ok) {
         const data = await res.json();
@@ -676,7 +685,9 @@ export async function generatePanelImage(panelDescription, characterContext, sty
       const resetSec = parseFloat(resetHdr || '0');
 
       if (res.status === 429) {
-        // Rate limited — honor the reset header, add jitter, stay on the same model
+        // OUR per-IP demo cap (not a provider throttle) — surface the "demo limit" toast, don't retry into blanks.
+        if (errBody.includes('demo_limit')) { try { _onBalance?.("demo_limit"); } catch {} return null; }
+        // Provider rate limit — honor the reset header, add jitter, stay on the same model
         const wait = Math.max(resetSec > 0 ? resetSec * 1000 : 3000, 2000) + Math.floor(Math.random() * 1500);
         console.warn(`Image API 429 — backing off ${Math.round(wait)}ms (attempt ${attempt+1}/${MAX_ATTEMPTS})`);
         await new Promise(r => setTimeout(r, wait));
@@ -693,7 +704,7 @@ export async function generatePanelImage(panelDescription, characterContext, sty
       // (unavailable model, or prompt flagged). Try the next model before giving up.
       console.error(`Image API ${res.status} body:`, errBody.slice(0, 300));
       if (modelIdx < MODELS.length - 1) { modelIdx++; await new Promise(r => setTimeout(r, 1200)); continue; }
-      return null;
+      break; // Together models exhausted → try the DeepInfra fallback below
     } catch(e) {
       clearTimeout(timer);
       const timedOut = e.name === "AbortError";
@@ -703,11 +714,30 @@ export async function generatePanelImage(panelDescription, characterContext, sty
         // so the UI can surface "service unavailable" instead of stalling for minutes.
         timeouts++;
         modelIdx++;
-        if (timeouts >= 2) return null;
+        if (timeouts >= 2) break; // Together hanging → try the DeepInfra fallback below
       }
       await new Promise(r => setTimeout(r, 2000));
     }
   }
+
+  // ── FALLBACK: DeepInfra FLUX-schnell (/api/deepinfra) — cheap, no aggressive input filter. Last resort
+  //    once Together is exhausted/unavailable. Best-effort: no-ops cleanly if DEEPINFRA_API_KEY isn't set.
+  //    chargeAction() runs 'free' if Together already charged this panel, or 'panel' if it never did
+  //    (e.g. Together was fully unreachable) — so the panel is still charged/counted exactly once.
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    const res = await fetch('/api/deepinfra', { method: 'POST', headers: apiHeaders(chargeAction()), body: JSON.stringify({ prompt, style }), signal: ctrl.signal });
+    clearTimeout(timer);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.b64) return `data:image/png;base64,${data.b64}`;
+      if (data.url) return data.url;
+    } else {
+      console.warn(`DeepInfra fallback ${res.status}`);
+    }
+  } catch (e) { console.warn('DeepInfra fallback failed:', e.message); }
+
   return null;
 }
 

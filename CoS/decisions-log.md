@@ -4,6 +4,20 @@ _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
 ## 2026-09-22
 
+- **Panel image provider switched: Fal → Together (Juggernaut Lightning Flux) primary + DeepInfra fallback
+  (~10× cheaper).** Pulled live pricing across providers for a 50-panel chapter: Fal ~$1.00, vs Together
+  Juggernaut Lightning Flux (`Rundiffusion/Juggernaut-Lightning-Flux`, $0.0017/MP) ~$0.085 and DeepInfra
+  FLUX-schnell ~$0.10 — same fast-Flux quality. Founder: "we do together lightning flux with deepinfra …
+  a tenth of the price as fal." Rewired `generatePanelImage` (`src/lib/claude.js`): Together primary
+  (Juggernaut → free FLUX → SDXL) → new DeepInfra proxy (`api/deepinfra.js`) fallback → Fal demoted behind
+  `FAL_ENABLED` (default off; `VITE_FAL_ENABLED=true` reverts). Added Juggernaut as the primary Together
+  model (`api/image.js`). Fixed a real trap: the Together call was hardcoded `'free'` (it used to run after
+  Fal charged) — now the primary call charges/counts exactly once via `chargeAction()`, and the per-IP
+  demo-cap 429 surfaces the right toast. Chain degrades gracefully (verified prod `/api/image` still returns
+  a valid image; local `.env.local` Together key is stale/401 — prod key is fine). Build clean. **Founder
+  setup: fund the Together account so Juggernaut serves (unfunded → free FLUX, still $0), and add
+  `DEEPINFRA_API_KEY` in Vercel.** Full live verification pending that setup. — Mr. K
+
 - **Teen-first platform: dropped "All ages", made Teen the default rating.** SUPERSEDES the "kids + adults
   on one platform" call below. Founder's reasoning: the house style is genuinely gory (murim, horror,
   action) — not appropriate for young kids, and "all ages" was never real for this catalog. Reframed the

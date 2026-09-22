@@ -13,18 +13,23 @@ The code is one-switch ready. The launch gate is a single boolean read from env 
 While off: provider keys stay server-side (the security win is always on), but auth + credit charging are
 skipped and per-IP daily caps (`DEMO_LIMITS`) keep demo spend sane.
 
-## Image providers — already armed (Fal primary, Together fallback)
+## Image providers — Together primary, DeepInfra fallback (Fal demoted 2026-09-22)
 
-No action needed. Orchestrated client-side in `src/lib/claude.js` (~L597–711):
+Orchestrated client-side in `src/lib/claude.js` (`generatePanelImage`). Each step falls through on failure:
 
-1. **Fal.ai** (`/api/fal`) is primary while funded: `flux/schnell` → `flux/schnell-safe` → `fast-sdxl`,
-   with black-image reseed and a **60s circuit breaker** — one account-level `429` pauses Fal for the rest
-   of the run so panels stop hammering a throttled account.
-2. **Together** (`/api/image`) is the automatic fallback: `FLUX.1-schnell-Free` → `SDXL`, with 429 backoff
-   (honors `x-ratelimit-reset`), 30s timeout aborts, and model failover.
+1. **Together** (`/api/image`) is PRIMARY: `Rundiffusion/Juggernaut-Lightning-Flux` (paid, ~$0.0017/MP —
+   ~10× cheaper than Fal; needs a **funded** Together account) → `FLUX.1-schnell-Free` (free) → `SDXL`
+   (free), with 429 backoff (honors `x-ratelimit-reset`), 30s timeout, and model failover.
+2. **DeepInfra** (`/api/deepinfra`) is the FALLBACK: `FLUX-1-schnell` (cheap, and no aggressive input
+   content-filter, so combat/dark prompts render instead of 422-ing). Needs `DEEPINFRA_API_KEY`; the call
+   no-ops cleanly until that env is set.
+3. **Fal** is DEMOTED — still fully wired but OFF (`FAL_ENABLED=false`, the default). Set
+   `VITE_FAL_ENABLED=true` (client build env) + redeploy to bring it back with no code change.
 
-So: **fund `FAL_KEY` → panels render on Fal. Fal empty/throttled/unfunded → every panel silently catches
-on Together.** Lower fidelity, same flow. This is the current behavior and needs no change to launch.
+**Founder setup for the quality tier:** (a) **fund the Together account** so Juggernaut Lightning serves —
+unfunded, it 402s and silently falls to the free FLUX, so the demo still renders for $0; (b) add
+**`DEEPINFRA_API_KEY`** in Vercel (+ `.env.local` for local dev) for the fallback. Fal's `FAL_KEY` is now
+unused. Panels are charged/counted exactly once regardless of which provider serves them.
 
 ## THE blocker you must clear first (only you can — DDL needs the SQL editor)
 

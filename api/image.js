@@ -12,7 +12,7 @@ export default async function handler(req, res) {
 
   // Auth + atomic credit charge (skipped while the launch gate is off).
   const g = await guard(req, req.headers['x-mv-action'] || 'panel', 'together');
-  if (!g.ok) { return res.status(g.status).json({ error: g.error }); }
+  if (!g.ok) { return res.status(g.status).json({ error: g.error, code: g.code }); }
   if (g.balance != null) res.setHeader('x-mv-balance', String(g.balance));
 
   const { prompt, style } = req.body;
@@ -43,29 +43,27 @@ export default async function handler(req, res) {
 
   const fullPrompt = `${cleanPrompt}, ${styleModifier}, high quality, no text`;
 
-  // Try models in order — fall back if one fails
+  // Try models in order — fall back if one fails.
+  // PRIMARY: Rundiffusion Juggernaut Lightning Flux — ~$0.0017/MP (~10x cheaper than Fal), needs a FUNDED
+  // Together account. If it 402s/4xxs (unfunded/unavailable) it falls through to the free FLUX, then SDXL,
+  // so the demo keeps rendering for $0 until Together is funded. All Flux-family, so the look stays consistent.
   const MODELS = [
-    'black-forest-labs/FLUX.1-schnell-Free',
-    'stabilityai/stable-diffusion-xl-base-1.0',
+    { id: 'Rundiffusion/Juggernaut-Lightning-Flux',   steps: 4,  b64: false },
+    { id: 'black-forest-labs/FLUX.1-schnell-Free',     steps: 4,  b64: false },
+    { id: 'stabilityai/stable-diffusion-xl-base-1.0', steps: 20, b64: true  },
   ];
 
-  for (const model of MODELS) {
+  for (const m of MODELS) {
+    const model = m.id;
     try {
-      const body = model.includes('FLUX') ? {
+      const body = {
         model,
         prompt: fullPrompt,
         width: 512,
         height: 768,
-        steps: 4,
+        steps: m.steps,
         n: 1,
-      } : {
-        model,
-        prompt: fullPrompt,
-        width: 512,
-        height: 768,
-        steps: 20,
-        n: 1,
-        response_format: 'b64_json',
+        ...(m.b64 ? { response_format: 'b64_json' } : {}),
       };
 
       const response = await fetch('https://api.together.xyz/v1/images/generations', {

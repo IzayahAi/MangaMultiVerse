@@ -14,7 +14,13 @@ _Decided 2026-09-22: free public demo, gate stays OFF, Together fallback, no Str
 and verified live this session. Only a couple of founder-side items remain:_
 
 **Remaining:**
-- **Confirm a funded Anthropic budget + a spend alert** (the only real burn — images are free on Together).
+- **Image providers (decided 2026-09-22): fund Together + add DeepInfra key.** Chain is now Together
+  (Juggernaut Lightning Flux) primary → DeepInfra fallback, Fal demoted (~10× cheaper). To activate the
+  quality tier: (a) fund the Together account so `Rundiffusion/Juggernaut-Lightning-Flux` serves — unfunded
+  it 402s and falls to free FLUX ($0, still works); (b) add `DEEPINFRA_API_KEY` in Vercel (+ `.env.local`).
+  Also: the local `.env.local` `TOGETHER_API_KEY` is stale (401) — prod's is valid; refresh the local one
+  to test locally. Live end-to-end verification of Juggernaut + DeepInfra is pending this setup.
+- **Confirm a funded Anthropic budget + a spend alert** (Anthropic text is the other real burn).
 - **Run the incognito smoke test**, then announce: guest read → sign up → create → Together render →
   publish → ⚑ report → admin hide.
 - **Decide the account-count ceiling** (still open). No `DEMO_MAX_USERS`; open signups are bounded by the
