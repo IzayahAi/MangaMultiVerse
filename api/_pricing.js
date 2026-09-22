@@ -78,16 +78,17 @@ export const PLANS = {
   },
   pro: {
     id: "pro", name: "Pro", priceUsd: 15, credits: 8000, interval: "month", stripePrice: process.env.STRIPE_PRICE_PRO || null,
-    features: { translate: true, voice: true, maxLangs: 12, lora: false, maxStories: null, fullAccess: false },
+    features: { translate: true, voice: true, maxLangs: 12, lora: false, maxStories: null, premiumArt: false, fullAccess: false },
   },
   studio: {
     id: "studio", name: "Studio", priceUsd: 30, credits: 16000, interval: "month", stripePrice: process.env.STRIPE_PRICE_STUDIO || null,
-    features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, fullAccess: false },
+    features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, premiumArt: false, fullAccess: false },
   },
   studio_pro: {
-    // Annual plan — the value/commitment deal. The webhook grants `credits` once per billing cycle (yearly).
+    // Annual plan — the premium tier. Its real differentiator is `premiumArt`: panels render on Juggernaut
+    // Pro Flux (see api/image.js) instead of the fast Lightning model. The webhook grants `credits` yearly.
     id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 60000, interval: "year", stripePrice: process.env.STRIPE_PRICE_STUDIO_PRO || null,
-    features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, fullAccess: true },
+    features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, premiumArt: true, fullAccess: true },
   },
 };
 

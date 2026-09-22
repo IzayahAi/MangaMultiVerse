@@ -1,4 +1,6 @@
-import { guard, corsHeaders } from "./_guard.js";
+import { guard, corsHeaders, getToken } from "./_guard.js";
+import { RELEASE_MODE } from "./_pricing.js";
+import { planAllows } from "./_supa.js";
 
 export default async function handler(req, res) {
   const cors = corsHeaders(req);
@@ -43,11 +45,16 @@ export default async function handler(req, res) {
 
   const fullPrompt = `${cleanPrompt}, ${styleModifier}, high quality, no text`;
 
-  // Try models in order — fall back if one fails.
-  // PRIMARY: Rundiffusion Juggernaut Lightning Flux — ~$0.0017/MP (~10x cheaper than Fal), needs a FUNDED
-  // Together account. If it 402s/4xxs (unfunded/unavailable) it falls through to the free FLUX, then SDXL,
-  // so the demo keeps rendering for $0 until Together is funded. All Flux-family, so the look stays consistent.
+  // Premium art tier: Studio Pro (plan feature `premiumArt`) renders on Juggernaut PRO Flux — the pro-grade
+  // Flux variant — instead of the fast Lightning model everyone else gets. Only checked at launch
+  // (RELEASE_MODE); in demo there are no plans so everyone stays on Lightning. Fails closed to Lightning.
+  const premium = RELEASE_MODE && (await planAllows(getToken(req), "premiumArt").catch(() => false));
+
+  // Try models in order — fall back if one fails. Premium primary (Studio Pro) → Juggernaut Pro; standard
+  // primary → Juggernaut Lightning (~$0.0017/MP, ~10x cheaper than Fal). Both need a FUNDED Together account;
+  // if the paid model 402s/4xxs it falls through to the free FLUX, then SDXL, so panels still render for $0.
   const MODELS = [
+    ...(premium ? [{ id: 'RunDiffusion/Juggernaut-pro-flux', steps: 28, b64: false }] : []),
     { id: 'Rundiffusion/Juggernaut-Lightning-Flux',   steps: 4,  b64: false },
     { id: 'black-forest-labs/FLUX.1-schnell-Free',     steps: 4,  b64: false },
     { id: 'stabilityai/stable-diffusion-xl-base-1.0', steps: 20, b64: true  },

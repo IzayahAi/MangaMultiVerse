@@ -62,7 +62,7 @@ export const DEMO_MAX_CHAPTERS = 3;
 export const PLAN_TIERS = [
   { id: "pro",        name: "Pro",        priceUsd: 15,  credits: 8000,   perks: ["8,000 credits / month", "Unlimited stories & chapters", "Character voices", "Ad-free reading"] },
   { id: "studio",     name: "Studio",     priceUsd: 30,  credits: 16000,  perks: ["16,000 credits / month", "Everything in Pro", "LoRA character training", "Priority generation"], highlight: true },
-  { id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 60000, interval: "year", perks: ["60,000 credits for a full year", "Full access — every feature", "Best value — one year, one price", "Top up anytime for more"] },
+  { id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 60000, interval: "year", perks: ["60,000 credits for a full year", "✦ Premium art — Juggernaut Pro (best quality)", "Everything in Studio + LoRA", "Best value — one year, one price"] },
 ];
 export const TOPUP_PACKS = [
   { id: "topup", name: "5,000 credits", credits: 5000, priceUsd: 10 },
@@ -71,10 +71,10 @@ export const TOPUP_PACKS = [
 // Per-plan feature flags (client mirror of api/_pricing.js PLANS[].features). `maxStories: null` = unlimited.
 // `adFree` = no interstitial ads while reading (paid perk).
 export const PLAN_FEATURES = {
-  free:       { translate: false, voice: false, maxLangs: 1,  lora: false, maxStories: 0,    adFree: false, fullAccess: false },
-  pro:        { translate: true,  voice: true,  maxLangs: 12, lora: false, maxStories: null, adFree: true,  fullAccess: false },
-  studio:     { translate: true,  voice: true,  maxLangs: 12, lora: true,  maxStories: null, adFree: true,  fullAccess: false },
-  studio_pro: { translate: true,  voice: true,  maxLangs: 12, lora: true,  maxStories: null, adFree: true,  fullAccess: true  },
+  free:       { translate: false, voice: false, maxLangs: 1,  lora: false, maxStories: 0,    adFree: false, premiumArt: false, fullAccess: false },
+  pro:        { translate: true,  voice: true,  maxLangs: 12, lora: false, maxStories: null, adFree: true,  premiumArt: false, fullAccess: false },
+  studio:     { translate: true,  voice: true,  maxLangs: 12, lora: true,  maxStories: null, adFree: true,  premiumArt: false, fullAccess: false },
+  studio_pro: { translate: true,  voice: true,  maxLangs: 12, lora: true,  maxStories: null, adFree: true,  premiumArt: true,  fullAccess: true  },
 };
 
 // Effective features for a user RIGHT NOW. In demo (gate off) everything premium is off + the demo story
