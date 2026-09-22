@@ -4,6 +4,25 @@ _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
 ## 2026-09-21
 
+- **Pricing & subscriptions decided + built (Stripe, behind the launch gate).** After cost-modeling with
+  the founder (Fal image spend is the binding constraint — a 50-panel chapter ≈ $1, so flat-unlimited
+  loses money), landed on: Free $0/100cr · Pro $25/700cr · Studio $50/1,600cr · **Studio Pro $100/4,000cr
+  = full access, capped by credits**; over the cap users buy top-up packs (300/$5, 1,000/$15, 3,000/$40,
+  10,000/$120). Founder's framing: a pro doing 7-8 chapters/day can't be flat-included, so cap-then-top-up
+  is the model. Built the full stack: Stripe Checkout + a signature-verified idempotent webhook (the only
+  credit granter, service-role) + billing portal + Pricing page + `db/billing.sql`. All inert until the
+  founder does the Stripe setup (`BILLING_SETUP.md`) and flips RELEASE_MODE. Open question carried: hide
+  credit balance from everyone vs show it to paying users (built to show for payers). — Mr. K
+
+- **Per-plan feature gates wired (client + server).** Voice, translation (+ language cap), LoRA, and the
+  story cap now unlock by plan at launch; enforced in the UI AND server-side (eleven.js voice, fal.js LoRA
+  via `planAllows`) so a bypassed client gate still can't reach a premium feature. Credits stay the hard
+  usage cap; gates are the product tiering on top. Demo behavior unchanged (gate off). — Mr. K
+
+- **Unified the Factory Floor into one map.** The AI Agents page now shows production line + control room +
+  the Maintenance wing (all 12 agents, by wave, with live-status dots) — realizing the captured "AI Agent
+  Factory" single-pane vision. Driven by the agent registry so it stays in sync. — Mr. K
+
 - **Shipped the ENTIRE Maintenance agent wing — 12 agents (P0×5, P1×5, P2×2) — in one session, on the
   Phase 0 runner.** P0: 💸 Spend Sentinel (`cost_ledger`), 🚀 Deploy Sentinel (`health_events`), 🔓
   Credit-Tamper Watch (`security_flags`), 🔍 SEO + 🗺️ Sitemap (built a real `/s/<id>` prerender surface —

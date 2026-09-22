@@ -16,6 +16,14 @@ JSON — Mr. K is live in production and the weekly cron is active. Nothing to r
 
 ## Waiting / to decide
 
+- **Billing go-live: founder Stripe setup.** The pricing/subscription code is shipped but inert. Needs:
+  create Stripe products/prices, set `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` + price IDs in Vercel,
+  register the webhook, run `db/billing.sql`, then flip `RELEASE_MODE`/`VITE_RELEASE_MODE`. Full checklist:
+  `BILLING_SETUP.md`.
+- **Hide credit balance from everyone, or show it to paying users?** Built to show the balance to paid
+  plans (so they know when to top up) and hide on Free — but the founder earlier wanted it fully hidden.
+  Confirm which before launch.
+
 - **Arm `db/spend_credits.sql` + `RELEASE_MODE`?** The secure credit path is coded but the SQL isn't run
   and the gate is off (demo). Flip at launch. (Note: the client-set-grant hole is now closed server-side
   regardless — signup trigger + profiles.role/credits column locks, verified 2026-09-21.)
