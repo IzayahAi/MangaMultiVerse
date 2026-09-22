@@ -73,7 +73,16 @@ export default function MaintenancePage({ token }) {
     setP2Busy(false);
   };
 
-  const waveColor = { P0: "#e24b4a", P1: C.gold, P2: C.muted };
+  // 🛡️ Moderator · Approval Rail
+  const [modBusy, setModBusy] = useState(false);
+  const [mod, setMod] = useState(null);
+  const [scanBusy, setScanBusy] = useState(false);
+  const [deciding, setDeciding] = useState(null);
+  const loadRail = async () => { setModBusy(true); setMod(await runMaintenance("review_list", token)); setModBusy(false); };
+  const runScan = async () => { setScanBusy(true); await runMaintenance("publish_review", token); setScanBusy(false); await loadRail(); };
+  const decide = async (story_id, decision) => { setDeciding(story_id + decision); await runMaintenance("review_decide", token, { story_id, decision }); setDeciding(null); await loadRail(); };
+
+  const waveColor = { P0: "#e24b4a", P1: C.gold, P2: C.muted, P3: C.purple };
   const statusColor = { planned: C.muted, building: C.gold, live: C.teal };
   const Dot = ({ on, label }) => (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: C.text }}>
@@ -441,15 +450,72 @@ export default function MaintenancePage({ token }) {
         );
       })()}
 
+      {/* 🛡️ Moderator · Approval Rail (Wave 4 / P3) */}
+      {(() => {
+        const M = mod?.ok && mod.result;
+        const vColor = { ok: C.teal, warn: C.gold, alert: "#e24b4a", violation: "#e24b4a", borderline: C.gold, pending: C.muted };
+        return (
+          <div style={{ background: C.surf, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: 18, marginBottom: 22 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>🛡️ Moderator · Approval Rail <span style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginLeft: 6 }}>P3 · live</span></div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>New publishes reviewed vs the Content Policy. Violations auto-hidden; borderline / mis-rated queued here. Runs on the daily cron.</div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Btn onClick={runScan} disabled={scanBusy} sx={{ fontSize: 12 }}>{scanBusy ? <><Spinner size={13} /> Scanning…</> : "▶ Scan new publishes"}</Btn>
+                <Btn v="pri" onClick={loadRail} disabled={modBusy} sx={{ fontSize: 12 }}>{modBusy ? <><Spinner size={13} /> Loading…</> : "↻ Approval rail"}</Btn>
+              </div>
+            </div>
+
+            {mod && !mod.ok && (
+              <div style={{ padding: "10px 14px", background: "#e24b4a18", border: "0.5px solid #e24b4a55", borderRadius: 10, fontSize: 12.5, color: C.text }}>
+                Couldn't load: {mod.error}{mod.status ? ` (HTTP ${mod.status})` : ""}. Needs the API layer (<code>vercel dev</code>) + an admin session.
+              </div>
+            )}
+            {M && M.armed === false && <div style={{ fontSize: 12.5, color: C.text }}><Tag c={C.gold}>Not armed</Tag> <span style={{ marginLeft: 8, color: C.muted }}>{M.note}</span></div>}
+            {M && M.table === false && <div style={{ fontSize: 12.5, color: C.text }}><Tag c={C.gold}>No table</Tag> <span style={{ marginLeft: 8, color: C.muted }}>{M.note}</span></div>}
+
+            {M && M.table && (
+              <div>
+                <div style={{ marginBottom: 12 }}>
+                  <Tag c={M.openCount ? "#e24b4a" : C.teal}>{M.openCount ? `${M.openCount} need${M.openCount === 1 ? "s" : ""} action` : "✓ Nothing to review"}</Tag>
+                </div>
+                {M.open?.length > 0 && (
+                  <div style={{ display: "grid", gap: 8, marginBottom: M.recent?.length ? 14 : 0 }}>
+                    {M.open.map((r) => (
+                      <div key={r.story_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: C.card, border: `0.5px solid ${C.border}`, borderRadius: 10, flexWrap: "wrap" }}>
+                        <Tag c={vColor[r.verdict] || C.muted}>{r.action === "auto_hidden" ? "auto-hidden" : r.verdict}</Tag>
+                        <div style={{ flex: 1, minWidth: 160 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 500, color: C.text }}>{r.title || r.story_id.slice(0, 10)}</div>
+                          <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{r.reason || "—"} · rated {r.rating || "teen"}</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <Btn v="teal" onClick={() => decide(r.story_id, "approve")} disabled={!!deciding} sx={{ fontSize: 11, padding: "4px 10px" }}>{deciding === r.story_id + "approve" ? "…" : "✓ Approve"}</Btn>
+                          <Btn onClick={() => decide(r.story_id, "hide")} disabled={!!deciding} sx={{ fontSize: 11, padding: "4px 10px", color: "#e24b4a", borderColor: "#e24b4a55" }}>{deciding === r.story_id + "hide" ? "…" : "🚫 Hide"}</Btn>
+                          <Btn onClick={() => decide(r.story_id, "dismiss")} disabled={!!deciding} sx={{ fontSize: 11, padding: "4px 10px" }}>{deciding === r.story_id + "dismiss" ? "…" : "Dismiss"}</Btn>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {M.recent?.length > 0 && (
+                  <div style={{ fontSize: 11, color: C.muted }}>Recent: {M.recent.slice(0, 8).map((r) => <span key={r.story_id} style={{ marginRight: 10 }}>{r.title || r.story_id.slice(0, 8)} <span style={{ color: vColor[r.verdict] || C.muted }}>{r.status === "resolved" ? r.action : r.verdict}</span></span>)}</div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Roadmap */}
-      {["P0", "P1", "P2"].map((wave) => {
+      {["P0", "P1", "P2", "P3"].map((wave) => {
         const items = MAINTENANCE.filter((m) => m.wave === wave);
         if (!items.length) return null;
         return (
           <div key={wave} style={{ marginBottom: 18 }}>
             <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ color: waveColor[wave], fontWeight: 700 }}>{wave}</span>
-              {wave === "P0" ? "Build first" : wave === "P1" ? "Ongoing health" : "Hygiene / fast-follows"}
+              {wave === "P0" ? "Build first" : wave === "P1" ? "Ongoing health" : wave === "P2" ? "Hygiene / fast-follows" : "Autonomous + approval"}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 10 }}>
               {items.map((m) => (

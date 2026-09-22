@@ -111,6 +111,24 @@ async function svcCount(table) {
   } catch { return null; }
 }
 
+// Cheap server-side Claude call for the agents that need judgment (Moderator, Curator). Uses Haiku to keep
+// cost low. Returns the text, or null on no-key/error. The server holds ANTHROPIC_API_KEY; the browser never
+// does, so agent reasoning can't be tampered with client-side.
+async function askClaudeServer(system, user, maxTokens = 300) {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key || !user) return null;
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] }),
+    });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return Array.isArray(d.content) ? d.content.map((b) => b.text || "").join("") : null;
+  } catch { return null; }
+}
+
 // The prod base URL to probe: an explicit PROD_URL, else this deployment (VERCEL_URL), else the known
 // production domain. Post-deploy the cron runs ON the new deployment, so VERCEL_URL verifies THAT build.
 function prodBase() {
@@ -571,6 +589,101 @@ const CHECKS = {
     return { armed: true, status, checks, failed, altText: "Panel images use panel.scene as descriptive alt (MangaReader). Images with no scene fall back to 'Panel N' — vision-generated alt for those is a future, cost-bearing follow-up." };
   },
 
+  // ── WAVE 4 (P3) — autonomous + human-approval ──────────────────────────────────────────────────────
+
+  // 🛡️ Moderator — review each newly published story against the Content Policy (teen-first: mature THEMES
+  // are allowed but must be rated Mature/18+; PROHIBITED: sexualizing minors, explicit sexual content,
+  // real-world hate, incitement, illegal). Clear VIOLATIONS are auto-hidden (status→'hidden') and still
+  // surfaced for confirmation; BORDERLINE / likely-misrated ones are queued for a human in the Approval
+  // Rail; OK ones are recorded so they're not re-reviewed. Cheap Haiku, capped per run. Reads/writes past RLS.
+  async publish_review(_params, ctx = {}) {
+    const probe = svc(`/rest/v1/review_queue?select=story_id&limit=1`);
+    if (!probe) return { armed: false, note: "Add SUPABASE_SERVICE_ROLE_KEY to arm the Moderator." };
+    const probeResp = await probe;
+    if (!probeResp.ok) return { armed: true, table: false, note: "Run db/review_queue.sql in Supabase — nothing reviewed yet.", httpStatus: probeResp.status };
+
+    const stories = await svcJson(`/rest/v1/stories?status=eq.published&select=id,title,author_id,tagline,logline,content_rating,script,updated_at&order=updated_at.desc&limit=300`) || [];
+    const reviewed = await svcJson(`/rest/v1/review_queue?select=story_id&limit=20000`) || [];
+    const seen = new Set(reviewed.map((r) => r.story_id));
+    const pending = stories.filter((s) => !seen.has(s.id));
+    const MAX_PER_RUN = 12; // bound cost/time; the rest catch the next run
+    const batch = pending.slice(0, MAX_PER_RUN);
+
+    const hasKey = !!process.env.ANTHROPIC_API_KEY;
+    const reviews = [];
+    for (const s of batch) {
+      const scenes = Array.isArray(s.script?.panels)
+        ? s.script.panels.slice(0, 4).map((p) => p?.scene || p?.description || "").filter(Boolean).join(" | ").slice(0, 800)
+        : "";
+      const brief = `Title: ${s.title || "(untitled)"}\nRating: ${s.content_rating || "teen"}\nTagline: ${s.tagline || ""}\nLogline: ${s.logline || ""}\nFirst panels: ${scenes}`;
+      let verdict = "ok", reason = "auto-approved (no model key configured)", shouldBeMature = false;
+      if (hasKey) {
+        const sys = `You are a content moderator for MangaMultiVerse, a teen-first (13+) AI manga platform. POLICY: mature THEMES (violence, gore, dark or suggestive themes) are ALLOWED, but a story with heavy gore or strong sexual themes must be rated "mature" (18+). PROHIBITED entirely: any sexualization of minors, explicit/pornographic sexual content, real-world hate or harassment of protected groups, incitement to violence/terrorism/self-harm, illegal content. Judge the story below. Reply ONLY with compact JSON: {"verdict":"ok|borderline|violation","reason":"<=12 words","should_be_mature":true|false}. violation=prohibited content; borderline=a human should look; ok=fine as rated.`;
+        const out = await askClaudeServer(sys, brief, 150);
+        let parsed = null;
+        if (out) { try { parsed = JSON.parse((out.match(/\{[\s\S]*\}/) || [out])[0]); } catch { parsed = null; } }
+        if (parsed) {
+          verdict = ["ok", "borderline", "violation"].includes(parsed.verdict) ? parsed.verdict : "borderline";
+          reason = String(parsed.reason || "").slice(0, 160);
+          shouldBeMature = !!parsed.should_be_mature;
+        } else { verdict = "borderline"; reason = "model review unavailable — needs a human"; }
+      }
+      // Mis-rating: model judges it mature-worthy but it isn't rated Mature → force a human review.
+      if (verdict === "ok" && shouldBeMature && s.content_rating !== "mature") {
+        verdict = "borderline"; reason = (reason ? reason + "; " : "") + "likely mis-rated (should be Mature)";
+      }
+
+      let action = "none", statusRow = "resolved";
+      if (verdict === "violation") {
+        await svc(`/rest/v1/stories?id=eq.${encodeURIComponent(s.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ status: "hidden", updated_at: new Date().toISOString() }) });
+        action = "auto_hidden"; statusRow = "open"; // hidden but surfaced so the admin can confirm/restore
+      } else if (verdict === "borderline") {
+        statusRow = "open"; // queued for a human; story stays visible
+      }
+      await svc(`/rest/v1/review_queue?on_conflict=story_id`, { method: "POST", headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ story_id: s.id, title: s.title || null, author_id: s.author_id || null, verdict, reason, rating: s.content_rating || null, action, status: statusRow, reviewed_at: new Date().toISOString() }) });
+      reviews.push({ id: s.id, title: s.title || null, verdict, action });
+    }
+
+    const violations = reviews.filter((r) => r.verdict === "violation").length;
+    const borderline = reviews.filter((r) => r.verdict === "borderline").length;
+    const status = violations ? "alert" : borderline ? "warn" : "ok";
+    let alerted = false;
+    if (ctx.actor === "cron" && violations + borderline > 0) {
+      alerted = await alertInbox(`🛡️ Moderator: reviewed ${reviews.length} new publish(es) — ${violations} auto-hidden violation(s), ${borderline} need a look. Open the Approval Rail on the Maintenance page.`);
+    }
+    return { armed: true, table: true, status, reviewedNow: reviews.length, pendingTotal: pending.length, violations, borderline, reviews, alerted, modelKey: hasKey };
+  },
+
+  // The Approval Rail feed — open review items (auto-hidden violations + borderline), newest first, plus a
+  // short recent-decisions tail. Read-only; the UI turns each open item into approve/hide/dismiss actions.
+  async review_list(_params, _ctx = {}) {
+    const probe = svc(`/rest/v1/review_queue?select=story_id&limit=1`);
+    if (!probe) return { armed: false, note: "Add SUPABASE_SERVICE_ROLE_KEY to arm." };
+    if (!(await probe).ok) return { armed: true, table: false, note: "Run db/review_queue.sql in Supabase." };
+    const open = await svcJson(`/rest/v1/review_queue?status=eq.open&select=story_id,title,verdict,reason,rating,action,reviewed_at&order=reviewed_at.desc&limit=200`) || [];
+    const recent = await svcJson(`/rest/v1/review_queue?select=story_id,title,verdict,action,status,decided_at&order=reviewed_at.desc&limit=15`) || [];
+    return { armed: true, table: true, open, openCount: open.length, recent };
+  },
+
+  // Approval Rail decision on one review item. decision: approve (restore→published) | hide (→hidden) |
+  // dismiss (leave the story as-is). Admin-only. Applies the story-side effect, then resolves the row.
+  async review_decide(params, ctx = {}) {
+    if (ctx.actor !== "admin" && ctx.actor !== "cron") return { ok: false, note: "admin only" };
+    const id = params.story_id;
+    const decision = params.decision;
+    if (!id || !["approve", "hide", "dismiss"].includes(decision)) return { ok: false, note: "need { story_id, decision: approve|hide|dismiss }" };
+    const probe = svc(`/rest/v1/review_queue?select=story_id&limit=1`);
+    if (!probe || !(await probe).ok) return { ok: false, armed: false, note: "review_queue not set up." };
+    if (decision === "approve") {
+      await svc(`/rest/v1/stories?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ status: "published", updated_at: new Date().toISOString() }) });
+    } else if (decision === "hide") {
+      await svc(`/rest/v1/stories?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ status: "hidden", updated_at: new Date().toISOString() }) });
+    }
+    const action = decision === "approve" ? "approved" : decision === "hide" ? "hidden" : "dismissed";
+    await svc(`/rest/v1/review_queue?story_id=eq.${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ status: "resolved", action, decided_at: new Date().toISOString() }) });
+    return { ok: true, story_id: id, decision, action };
+  },
+
   // Consolidated cron entry — runs every maintenance check that should fire unattended, in one call, so
   // the whole wing needs only ONE daily cron (Hobby plans cap crons at 2 total / once-daily). Each check
   // still alerts Mr. K's inbox on its own when the actor is cron. On-demand checks use their own buttons.
@@ -578,7 +691,7 @@ const CHECKS = {
     const run = (name) => CHECKS[name](params, ctx).catch((e) => ({ error: e.message }));
     // The unattended set: money, prod, security, data, discovery. links_check + catalog_check are
     // on-demand quality audits (button-only) — not urgent and not worth a daily inbox nudge.
-    const names = ["spend_summary", "deploy_check", "tamper_watch", "uptime_check", "integrity_check", "posture_check", "deps_check", "discovery_check", "seo_audit"];
+    const names = ["spend_summary", "deploy_check", "tamper_watch", "uptime_check", "integrity_check", "posture_check", "deps_check", "discovery_check", "seo_audit", "publish_review"];
     const out = {};
     const results = await Promise.all(names.map(run));
     names.forEach((n, i) => { out[n] = results[i]; });

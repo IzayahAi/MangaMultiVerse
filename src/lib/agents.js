@@ -45,6 +45,11 @@ export const MAINTENANCE = [
   { id: "posture",   name: "Security Posture Auditor", icon: "🛡️", wave: "P1", status: "live",    blurb: "No secret leaks in the bundle + admin tables not anon-readable." },
   { id: "deps",      name: "Dependency & Backup",      icon: "📦", wave: "P2", status: "live",    blurb: "OSV vulnerability scan of deps + a key-table row-count snapshot." },
   { id: "a11y",      name: "Accessibility & Alt-Text", icon: "♿", wave: "P2", status: "live",    blurb: "Static shell a11y audit; panel images use scene text as alt." },
+  // Wave 4 (P3) — autonomous agents with a human-approval rail.
+  { id: "moderator", name: "Moderator",                icon: "🛡️", wave: "P3", status: "live",    blurb: "Reviews new publishes vs the Content Policy; auto-hides violations, queues the rest for approval." },
+  { id: "medic",     name: "Health Medic",             icon: "🩹", wave: "P3", status: "planned", blurb: "Re-renders missing/blank panel art (Broken-Link detects, Medic fixes)." },
+  { id: "curator",   name: "Curator & Recommender",    icon: "✨", wave: "P3", status: "planned", blurb: "Platform-wide trending + what-to-read-next from the published catalog." },
+  { id: "translator",name: "Translator Queue",         icon: "🌐", wave: "P3", status: "planned", blurb: "Pre-translates popular stories into top languages on a capped queue." },
 ];
 
 export const AGENTS = [...LINE, ...CONTROL_ROOM];
