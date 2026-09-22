@@ -22,7 +22,8 @@ begin
     coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
     new.email,
     'creator',   -- role is ALWAYS creator at signup; admins are promoted manually
-    120          -- DEMO_CREDITS grant (keep in sync with api/_pricing.js DEMO_CREDITS)
+    500          -- DEMO_CREDITS grant, generous to seed content (keep in sync with api/_pricing.js).
+                 -- AT LAUNCH: Free is read-only — drop this to 0 (or a small taste) when flipping RELEASE_MODE.
   )
   on conflict (id) do nothing;
   return new;

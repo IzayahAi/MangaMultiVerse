@@ -39,8 +39,8 @@ export const RECOMMENDED_LANGS = ["Spanish","Portuguese","French","Indonesian","
 export const RELEASE_MODE = ((typeof import.meta !== "undefined" && import.meta.env?.VITE_RELEASE_MODE) ?? "false") === "true";
 // Cap languages pre-translated in one publish (mirror of api/_pricing.js LIMITS).
 export const MAX_LANGS_PER_PUBLISH = 12;
-// Credit grant for new signups while in demo/beta (was 840). ~2-3 stories. Mirror of api/_pricing.js.
-export const DEMO_CREDITS = 120;
+// Credit grant for new signups while in demo/beta — generous to seed content. Mirror of api/_pricing.js.
+export const DEMO_CREDITS = 500;
 // Multi-language translation is OFF in demo (English only) to save tokens; it turns on at launch.
 export const TRANSLATION_ENABLED = RELEASE_MODE;
 // Demo caps (unlimited at launch): up to DEMO_MAX_STORIES separate manga, each up to DEMO_MAX_CHAPTERS
@@ -51,7 +51,7 @@ export const DEMO_MAX_CHAPTERS = 3;
 // Pricing display (client mirror of api/_pricing.js PLANS/PACKS — display only, no Stripe IDs/secrets).
 // `id` is what the client sends to /api/stripe-checkout; the server maps it to the real Stripe price.
 export const PLAN_TIERS = [
-  { id: "free",       name: "Free",       priceUsd: 0,   credits: 100,  perks: ["100 credits / month", "Read everything", "Create up to 2 stories", "English only"] },
+  { id: "free",       name: "Free",       priceUsd: 0,   credits: 0,    perks: ["Read & follow every series", "Free forever — just sign in", "Supported by short ads", "Upgrade to a paid plan to create"] },
   { id: "pro",        name: "Pro",        priceUsd: 25,  credits: 700,  perks: ["700 credits / month", "Unlimited stories & chapters", "Translation (12 languages)", "Character voices"] },
   { id: "studio",     name: "Studio",     priceUsd: 50,  credits: 1600, perks: ["1,600 credits / month", "Everything in Pro", "LoRA character training", "Priority generation"], highlight: true },
   { id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 4000, perks: ["4,000 credits / month", "Full access — every feature", "Best for full-time creators", "Top up anytime for more"] },
@@ -65,7 +65,7 @@ export const TOPUP_PACKS = [
 
 // Per-plan feature flags (client mirror of api/_pricing.js PLANS[].features). `maxStories: null` = unlimited.
 export const PLAN_FEATURES = {
-  free:       { translate: false, voice: false, maxLangs: 1,  lora: false, maxStories: 2,    fullAccess: false },
+  free:       { translate: false, voice: false, maxLangs: 1,  lora: false, maxStories: 0,    fullAccess: false },
   pro:        { translate: true,  voice: true,  maxLangs: 12, lora: false, maxStories: null, fullAccess: false },
   studio:     { translate: true,  voice: true,  maxLangs: 12, lora: true,  maxStories: null, fullAccess: false },
   studio_pro: { translate: true,  voice: true,  maxLangs: 12, lora: true,  maxStories: null, fullAccess: true  },

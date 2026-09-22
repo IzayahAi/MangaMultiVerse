@@ -53,8 +53,9 @@ export function usdFor(action) {
 // capping runaway/guest abuse. textPerDay raised to match so text isn't the bottleneck. Tune here.
 export const DEMO_LIMITS = { imagesPerDay: 300, textPerDay: 100 };
 
-// Credit grant for NEW signups while in demo (was 840). ~2-3 stories' worth. Mirror: constants.js.
-export const DEMO_CREDITS = 120;
+// Credit grant for NEW signups while in demo/beta — generous to seed content. Mirror: constants.js.
+// (At launch, Free is read-only: revisit the signup-trigger grant in db/signup_trigger.sql.)
+export const DEMO_CREDITS = 500;
 
 // The launch gate. OFF (default) = demo/beta: keys are still server-side (the security win is always
 // on), but auth + credit charging are skipped so the current experience is unchanged. ON = release:
@@ -71,8 +72,9 @@ export function costFor(action) {
 // credit `cap` is the real usage limit — over it, users buy a pack. Numbers are tunable config.
 export const PLANS = {
   free: {
-    id: "free", name: "Free", priceUsd: 0, credits: 100, stripePrice: null,
-    features: { translate: false, voice: false, maxLangs: 1, lora: false, maxStories: 2, fullAccess: false },
+    id: "free", name: "Free", priceUsd: 0, credits: 0, stripePrice: null,
+    // Read-only: free to read + be on the site (ad-supported). Creating requires a paid plan.
+    features: { translate: false, voice: false, maxLangs: 1, lora: false, maxStories: 0, fullAccess: false },
   },
   pro: {
     id: "pro", name: "Pro", priceUsd: 25, credits: 700, stripePrice: process.env.STRIPE_PRICE_PRO || null,
