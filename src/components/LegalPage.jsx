@@ -131,7 +131,7 @@ export default function LegalPage({ doc = "terms", onDoc }) {
 
       {active === "content" && (
         <div>
-          <P>MangaMultiVerse is a creative platform used by a broad audience, including minors. To keep it safe, everyone must follow this Content Policy. We may remove content and suspend accounts that break it.</P>
+          <P>MangaMultiVerse is a teen-and-up (13+) creative platform, so its audience includes minors (ages 13–17). Stories default to a <b>Teen</b> rating; content for adults must be rated <b>Mature</b> and is gated to viewers 18+. To keep it safe, everyone must follow this Content Policy. We may remove content and suspend accounts that break it.</P>
 
           <H>Not allowed</H>
           <UL>
