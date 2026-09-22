@@ -203,6 +203,23 @@ export async function askClaude(prompt, onChunk, retries=2, action="misc") {
   return null;
 }
 
+// Cache-first translation via /api/translate: returns a globally-cached translation if one exists (free,
+// instant, same for everyone), else translates once (Haiku), persists it for every future reader, and returns
+// it. This is what makes "every manga in every language for every reader" affordable — each (story, language,
+// chapter) is paid for once, ever. No sign-in / no credit charge; the server bounds misses by the per-IP cap.
+// Returns { cached, data } where data = { language, chapter_title, panels } (or data:null on failure).
+export async function translateCached(storyId, language, chapterNum, panels, story) {
+  try {
+    const r = await fetch("/api/translate", {
+      method: "POST",
+      headers: apiHeaders("free"),
+      body: JSON.stringify({ storyId, language, chapterNum: chapterNum || 1, panels: panels || [], story: { title: story?.title, logline: story?.logline } }),
+    });
+    if (!r.ok) { const b = await r.json().catch(() => ({})); return { data: null, code: b.code, error: b.error || `HTTP ${r.status}` }; }
+    return await r.json();
+  } catch (e) { return { data: null, error: e.message }; }
+}
+
 // Translate a whole chapter into `lang`, running its 12-panel batches CONCURRENTLY (default 4 at a
 // time) instead of one-by-one — a big speedup on long chapters, with panel order preserved. Returns
 // { language, chapter_title, panels } or null. onProgress(done, total) reports batch completion.

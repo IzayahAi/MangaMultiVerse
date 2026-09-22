@@ -1,7 +1,7 @@
 ﻿import { useState, useRef, useEffect } from "react";
 import { MOOD_PALETTES, getMood, LANG_GROUPS, RELEASE_MODE, TRANSLATION_ENABLED, featuresFor, AD_EVERY_CHAPTERS, AD_SECONDS } from "../constants.js";
 import { useTheme } from "../ThemeContext.jsx";
-import { askClaude, P_TRANSLATE, translateChapter } from "../lib/claude.js";
+import { askClaude, P_TRANSLATE, translateChapter, translateCached } from "../lib/claude.js";
 import { fetchTranslation, fetchChapter, submitReport } from "../lib/supabase.js";
 import AdGate from "./AdGate.jsx";
 import { BUBBLE_FONT, SHOUT_FONT, isBigPanel, onArtBubbles, ThoughtCloud, spreadShots, spreadCellSpan, buildCharIntros, firstAppearances, CharIntroCard, NarrationBox } from "./mangaBubbles.jsx";
@@ -210,26 +210,15 @@ const MangaReader = ({ story, onBack, panelImages, signedIn = false, reporterId 
     try { const c = JSON.parse(localStorage.getItem(cacheKey) || "null"); if (c?.panels) { setTranslation(c); setTranslating(false); return; } } catch {}
     setTranslating(true); setTranslation(null);
     (async () => {
-      // 1) Pre-generated in the translations store (Ch.1 only for now; Ch.2+ translate live below).
+      // Cache-first, open to EVERY reader: /api/translate returns a globally-cached translation if one exists
+      // (free), else translates once and persists it for everyone. No sign-in / no credit charge — reading a
+      // manga in any language is open to all (max reach). Misses are bounded by the per-IP cap server-side.
       try {
-        const stored = currentChapter <= 1 ? await fetchTranslation(story.id, lang) : null;
+        const out = await translateCached(story.id, lang, currentChapter, chScript?.panels, story);
         if (!active) return;
-        if (stored?.panels?.length) {
-          setTranslation(stored); setTranslating(false);
-          try { localStorage.setItem(cacheKey, JSON.stringify(stored)); } catch {}
-          return;
-        }
-      } catch {}
-      // At release, live on-demand translation is a signed-in, credited action — guests get only the
-      // pre-generated languages (served above). During demo (gate off) everyone can translate live.
-      if (RELEASE_MODE && (!signedIn || !featuresFor(user).translate)) { if (active) { setTransErr(true); setTranslating(false); } return; }
-      // 2) Live on-demand fallback — concurrent 12-panel batches (fast, never truncates).
-      try {
-        const out = await translateChapter(chScript, lang, story.voices, story);
-        if (!active) return;
-        if (out?.panels?.length) {
-          setTranslation(out);
-          try { localStorage.setItem(cacheKey, JSON.stringify(out)); } catch {}
+        if (out?.data?.panels?.length) {
+          setTranslation(out.data);
+          try { localStorage.setItem(cacheKey, JSON.stringify(out.data)); } catch {}
         } else setTransErr(true);
       } catch { if (active) setTransErr(true); }
       finally { if (active) setTranslating(false); }

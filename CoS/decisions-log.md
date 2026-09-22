@@ -4,6 +4,19 @@ _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
 ## 2026-09-22
 
+- **Translation model: every manga, every language, every reader — free + globally cached.** Founder wants
+  max reach ("all mangas possible for everyone in every language … to get more views"), and flagged
+  translation as "really expensive." Root cause found: it already uses cheap Haiku (~$0.008/lang/chapter),
+  but live translations were cached only in the reader's **localStorage**, never the shared store (RLS blocks
+  non-owner writes) — so a popular story×language was re-paid **once per reader per device**. Fix: new
+  `api/translate.js` — **cache-first** (checks the translations store; on a hit, free/instant; on a miss,
+  translates once with Haiku and **persists globally via the service role**), so each (story, language,
+  chapter) is paid for **once, ever**, then free for everyone. Removed the paid/sign-in gate on *reading*
+  translations (MangaReader now routes the live path through `translateCached`); misses are bounded by the
+  existing per-IP cap. Result: whole catalog translatable into any language for all readers at trivial cost
+  (a story read in 20 languages ≈ $0.16 total, one-time). No new founder setup (uses the service-role +
+  Anthropic keys already set). Inert in the English-only demo; activates at launch. — Mr. K
+
 - **Built the P3 "autonomous + approval" agent wave — 4 agents.** Founder: "build them all including the
   translator queue worker." Shipped on the existing secured runner (`api/maintenance.js`) + a cheap Haiku
   helper (`askClaudeServer`): **🛡️ Moderator + Approval Rail** (reviews each new publish vs the Content
