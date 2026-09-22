@@ -62,7 +62,7 @@ export const DEMO_MAX_CHAPTERS = 3;
 export const PLAN_TIERS = [
   { id: "pro",        name: "Pro",        priceUsd: 15,  credits: 5000,   perks: ["5,000 credits / month", "Unlimited stories & chapters", "Character voices", "Ad-free reading"] },
   { id: "studio",     name: "Studio",     priceUsd: 30,  credits: 16000,  perks: ["16,000 credits / month", "Everything in Pro", "LoRA character training", "Priority generation"], highlight: true },
-  { id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 35000, interval: "year", perks: ["✦ Premium art — Juggernaut Pro (best quality)", "35,000 credits for a full year", "Everything in Studio + LoRA", "The best art on the platform"] },
+  { id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 30000, interval: "year", perks: ["✦ Premium art — Juggernaut Pro (best quality)", "30,000 credits for a full year", "Everything in Studio + LoRA", "The best art on the platform"] },
 ];
 export const TOPUP_PACKS = [
   { id: "topup", name: "5,000 credits", credits: 5000, priceUsd: 10 },

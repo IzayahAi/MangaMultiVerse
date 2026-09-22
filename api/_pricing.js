@@ -89,7 +89,7 @@ export const PLANS = {
   studio_pro: {
     // The premium tier — its hook is `premiumArt`: panels render on Juggernaut Pro Flux (best quality), traded
     // for fewer credits than Studio. Annual; the webhook grants `credits` once per year.
-    id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 35000, interval: "year", stripePrice: process.env.STRIPE_PRICE_STUDIO_PRO || null,
+    id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 30000, interval: "year", stripePrice: process.env.STRIPE_PRICE_STUDIO_PRO || null,
     features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, premiumArt: true, fullAccess: true },
   },
 };
