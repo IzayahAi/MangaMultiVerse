@@ -4,6 +4,18 @@ _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
 ## 2026-09-22
 
+- **Built the P3 "autonomous + approval" agent wave — 4 agents.** Founder: "build them all including the
+  translator queue worker." Shipped on the existing secured runner (`api/maintenance.js`) + a cheap Haiku
+  helper (`askClaudeServer`): **🛡️ Moderator + Approval Rail** (reviews each new publish vs the Content
+  Policy → auto-hides violations, queues borderline/mis-rated for a human; `db/review_queue.sql`;
+  `publish_review`/`review_list`/`review_decide`; folded into the daily cron), **🩹 Health Medic** (scan +
+  capped re-render of missing panels via Together-free), **✨ Curator/Recommender** (trending/fresh/themed
+  shelves + Claude staff-picks, read-only), **🌐 Translator Queue** (capped pre-translation into top
+  languages, inert in the English-only demo). The two data-writers (Medic heal, Translator) are **manual +
+  capped, deliberately NOT on the cron** until verified. Registry (`agents.js`) + a Maintenance UI wave +
+  roadmap updated. Build clean. **Founder setup: run `db/review_queue.sql`; verify the two writers on a
+  throwaway story before cron-promoting.** — Mr. K
+
 - **Panel image provider switched: Fal → Together (Juggernaut Lightning Flux) primary + DeepInfra fallback
   (~10× cheaper).** Pulled live pricing across providers for a 50-panel chapter: Fal ~$1.00, vs Together
   Juggernaut Lightning Flux (`Rundiffusion/Juggernaut-Lightning-Flux`, $0.0017/MP) ~$0.085 and DeepInfra

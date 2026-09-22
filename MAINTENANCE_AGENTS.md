@@ -138,5 +138,17 @@ the prerender decision.
   instead of the package.json range minimum — the mismatch is what made it flag a vite that the lockfile
   had already moved past. Agent → fix → agent-hardening, closed loop.
 
+- **2026-09-22 — Wave 4 (P3) autonomous + approval: 4 agents shipped ✅.** The human-in-the-loop tier that
+  going public surfaces. 🛡️ **Moderator + Approval Rail** — `publish_review` reviews each new publish vs the
+  Content Policy with cheap Haiku (`askClaudeServer`), auto-hides clear violations (status→hidden) and queues
+  borderline/mis-rated ones; `review_list`/`review_decide` back the Approval Rail (Approve/Hide/Dismiss);
+  `db/review_queue.sql` (service-role-only); folded into the daily `cron_tick`. 🩹 **Health Medic** —
+  `medic_scan` (panel-gap detail) + `medic_heal` (re-render missing panels via Together-free, write to
+  `script.panel_images`; manual + capped). ✨ **Curator/Recommender** — `curate` returns trending/fresh/
+  themed shelves + Claude staff-picks (read-only). 🌐 **Translator Queue** — `translate_queue` pre-translates
+  top stories into high-reach languages into the `translations` table (manual + capped; inert in the
+  English-only demo). The two data-writers are deliberately OFF the cron until verified on a throwaway story.
+  **Founder setup: run `db/review_queue.sql`.** Registry + Maintenance UI + roadmap updated.
+
 ---
 _Source: synthesized from a 3-desk planning pass (Reliability, Growth/SEO, Cost/Data/Security)._

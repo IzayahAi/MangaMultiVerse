@@ -82,6 +82,16 @@ export default function MaintenancePage({ token }) {
   const runScan = async () => { setScanBusy(true); await runMaintenance("publish_review", token); setScanBusy(false); await loadRail(); };
   const decide = async (story_id, decision) => { setDeciding(story_id + decision); await runMaintenance("review_decide", token, { story_id, decision }); setDeciding(null); await loadRail(); };
 
+  // 🩹 Health Medic · ✨ Curator · 🌐 Translator Queue
+  const [medicBusy, setMedicBusy] = useState(false); const [medic, setMedic] = useState(null);
+  const [healId, setHealId] = useState(""); const [healBusy, setHealBusy] = useState(false); const [heal, setHeal] = useState(null);
+  const [curBusy, setCurBusy] = useState(false); const [cur, setCur] = useState(null);
+  const [trBusy, setTrBusy] = useState(false); const [tr, setTr] = useState(null);
+  const runMedic = async () => { setMedicBusy(true); setMedic(await runMaintenance("medic_scan", token)); setMedicBusy(false); };
+  const runHeal = async () => { if (!healId.trim()) return; setHealBusy(true); setHeal(await runMaintenance("medic_heal", token, { story_id: healId.trim() })); setHealBusy(false); await runMedic(); };
+  const runCurate = async () => { setCurBusy(true); setCur(await runMaintenance("curate", token)); setCurBusy(false); };
+  const runTranslate = async (real) => { setTrBusy(true); setTr(await runMaintenance("translate_queue", token, real ? { max: 5 } : { dryRun: true })); setTrBusy(false); };
+
   const waveColor = { P0: "#e24b4a", P1: C.gold, P2: C.muted, P3: C.purple };
   const statusColor = { planned: C.muted, building: C.gold, live: C.teal };
   const Dot = ({ on, label }) => (
@@ -503,6 +513,69 @@ export default function MaintenancePage({ token }) {
                 )}
               </div>
             )}
+          </div>
+        );
+      })()}
+
+      {/* 🩹✨🌐 Health Medic · Curator · Translator Queue (Wave 4 / P3) */}
+      {(() => {
+        const Md = medic?.ok && medic.result;
+        const H = heal?.ok && heal.result;
+        const Cu = cur?.ok && cur.result;
+        const Tr = tr?.ok && tr.result;
+        const sub = { display: "block", fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 8 };
+        return (
+          <div style={{ background: C.surf, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: 18, marginBottom: 22 }}>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>🩹 Health Medic · ✨ Curator · 🌐 Translator Queue <span style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginLeft: 6 }}>P3 · live</span></div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>The write actions (heal, translate) are manual + capped — nothing runs on the cron until you've verified them.</div>
+            </div>
+
+            {/* Health Medic */}
+            <div style={{ borderTop: `0.5px solid ${C.border}`, paddingTop: 12, marginBottom: 12 }}>
+              <span style={sub}>🩹 Health Medic</span>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+                <Btn v="pri" onClick={runMedic} disabled={medicBusy} sx={{ fontSize: 12 }}>{medicBusy ? <><Spinner size={13} /> Scanning…</> : "▶ Scan panel gaps"}</Btn>
+                <input value={healId} onChange={(e) => setHealId(e.target.value)} placeholder="story_id to heal" style={{ padding: "6px 10px", borderRadius: 8, border: `0.5px solid ${C.border2}`, background: C.card, color: C.text, fontSize: 12, fontFamily: "inherit", outline: "none", minWidth: 180 }} />
+                <Btn onClick={runHeal} disabled={healBusy || !healId.trim()} sx={{ fontSize: 12 }}>{healBusy ? <><Spinner size={13} /> Healing…</> : "🩹 Heal story"}</Btn>
+              </div>
+              {medic && !medic.ok && <div style={{ fontSize: 12, color: C.muted }}>Couldn't scan: {medic.error} (needs vercel dev + admin).</div>}
+              {Md && Md.armed === false && <div style={{ fontSize: 12, color: C.muted }}><Tag c={C.gold}>Not armed</Tag> {Md.note}</div>}
+              {Md && Md.armed !== false && (
+                <div style={{ fontSize: 12, color: C.text }}>
+                  <Tag c={Md.totalMissing ? C.gold : C.teal}>{Md.totalMissing ? `${Md.totalMissing} missing panel(s) in ${Md.storiesWithGaps} story(ies)` : "✓ No panel gaps"}</Tag>
+                  {Md.gaps?.length > 0 && <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>{Md.gaps.slice(0, 6).map((g) => <span key={g.id} style={{ marginRight: 12 }}>{g.title || g.id.slice(0, 8)} <b style={{ color: C.gold }}>{g.missing}/{g.panels}</b> · <code style={{ fontSize: 10 }}>{g.id}</code></span>)}</div>}
+                </div>
+              )}
+              {H && <div style={{ fontSize: 11.5, color: C.teal, marginTop: 6 }}>Healed {H.healed} panel(s) on {H.story_id}.</div>}
+            </div>
+
+            {/* Curator */}
+            <div style={{ borderTop: `0.5px solid ${C.border}`, paddingTop: 12, marginBottom: 12 }}>
+              <span style={sub}>✨ Curator & Recommender</span>
+              <Btn v="pri" onClick={runCurate} disabled={curBusy} sx={{ fontSize: 12, marginBottom: 8 }}>{curBusy ? <><Spinner size={13} /> Curating…</> : "▶ Build shelves"}</Btn>
+              {cur && !cur.ok && <div style={{ fontSize: 12, color: C.muted }}>Couldn't curate: {cur.error}.</div>}
+              {Cu && (
+                <div style={{ fontSize: 11.5, color: C.muted }}>
+                  <div style={{ marginBottom: 4 }}><b style={{ color: C.text }}>Trending:</b> {Cu.trending?.slice(0, 6).map((s) => s.title || s.id.slice(0, 8)).join(" · ") || "—"}</div>
+                  <div style={{ marginBottom: 4 }}><b style={{ color: C.text }}>Shelves:</b> {Cu.shelves?.map((s) => `${s.genre} (${s.items.length})`).join(" · ") || "—"}</div>
+                  {Cu.staffPicks?.length > 0 && <div><b style={{ color: C.purple }}>Staff picks:</b> {Cu.staffPicks.map((p) => p.reason).join(" · ")}</div>}
+                </div>
+              )}
+            </div>
+
+            {/* Translator Queue */}
+            <div style={{ borderTop: `0.5px solid ${C.border}`, paddingTop: 12 }}>
+              <span style={sub}>🌐 Translator Queue</span>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                <Btn onClick={() => runTranslate(false)} disabled={trBusy} sx={{ fontSize: 12 }}>{trBusy ? <><Spinner size={13} /> Planning…</> : "▶ Plan (dry run)"}</Btn>
+                <Btn v="pri" onClick={() => runTranslate(true)} disabled={trBusy} sx={{ fontSize: 12 }}>{trBusy ? <><Spinner size={13} /> Translating…</> : "🌐 Translate top 5"}</Btn>
+              </div>
+              {tr && !tr.ok && <div style={{ fontSize: 12, color: C.muted }}>Couldn't run: {tr.error}.</div>}
+              {Tr && Tr.armed === false && <div style={{ fontSize: 12, color: C.muted }}><Tag c={C.gold}>Not armed</Tag> {Tr.note}</div>}
+              {Tr && Tr.dryRun && <div style={{ fontSize: 11.5, color: C.muted }}><Tag c={C.muted}>Dry run</Tag> {Tr.jobs} job(s) would run: {Tr.planned?.slice(0, 6).map((j) => `${j.title || j.id.slice(0, 6)}→${j.lang}`).join(", ")}</div>}
+              {Tr && Tr.done != null && <div style={{ fontSize: 11.5, color: C.teal }}>Translated {Tr.done}/{Tr.jobs} job(s).</div>}
+            </div>
           </div>
         );
       })()}

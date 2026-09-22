@@ -74,23 +74,19 @@ and verified live this session. Only a couple of founder-side items remain:_
 
 ## Captured ideas (not yet acted on)
 
-- **Post-launch build roadmap (Mr. K synthesis, 2026-09-22) — "what's next besides funding."** 21 agents are
-  live (5 line, 4 control room, 12 maintenance). The gaps are all in the **autonomous + human-approval
-  tier**, which going public surfaces. Priority order:
-  - **P0 — 🛡️ Moderator Agent + the approval rail.** Auto-review each new publish (Claude vs the Content
-    Policy: title/tagline/cover/first panels) → auto-hide clear violations, queue borderline ones. Needs a
-    review-queue table + a `publish_review` runner check + the **"ACTION NEEDED / approve" rail** — the
-    reusable human-in-the-loop surface every autonomous agent needs. Highest leverage: public AI-generated
-    UGC under our name is the one thing that can actually hurt us, and the rail is the spine for all Tier-3.
-  - **P1 — 🩺 Health Medic** (auto re-render missing/blank panels — Broken-Link detects, Medic fixes; cheap
-    now that art is ~10× cheaper) and **✨ Curator/Recommender** (platform-wide "what to read next"/trending
-    — retention for a growing public catalog; today it's per-story only).
-  - **Later — Translator queue worker** (promote the on-demand engine to a capped queue; only matters once
-    translation is on at launch) and **Ops Analyst → scheduled**.
-  - **Non-agent additions (non-funding):** self-serve account/data deletion (GDPR/app-store; currently
-    contact-only), lightweight privacy-respecting analytics (can't tune a public launch we can't measure),
-    signup bot/abuse hardening (open signups invite bots), feed pagination (catalog will grow), a legal
-    review of the beta policies, and a first-run "make your first manga" onboarding nudge.
+- **Post-launch agent roadmap — P3 wave BUILT 2026-09-22 ("build them all").** All four autonomous+approval
+  agents shipped on the runner (Moderator + Approval Rail, Health Medic, Curator/Recommender, Translator
+  Queue). Remaining to finish them:
+  - **Run `db/review_queue.sql`** in Supabase (Moderator's queue; best-effort until then).
+  - **Verify the two data-writers on a throwaway story** before cron-promoting: Health Medic's `medic_heal`
+    (does the reader pick up panels written to `script.panel_images`?) and the Translator Queue (does a
+    written translation render? confirm the `translations` table's columns/shape match).
+  - **Wire Curator shelves into the public homepage** (App.jsx) — today it computes shelves but only shows
+    them on the Maintenance page; the last mile is rendering trending/staff-picks on the feed.
+  - Ops Analyst → scheduled remains a later nicety.
+  - **Non-agent additions (non-funding), still open:** self-serve account/data deletion (GDPR/app-store),
+    lightweight privacy-respecting analytics, signup bot/abuse hardening, feed pagination, a legal review of
+    the beta policies, and a first-run "make your first manga" onboarding nudge.
 - **SEO/Sitemap pays off when the demo goes public.** Built now (Wave 1) but the demo is private, so the
   `/s/<id>` prerender + sitemap/robots/llms only matter once discovery is wanted.
 - **Bundle-size follow-up.** The build warns the main chunk is >500 KB; code-splitting is deferred, non-urgent.

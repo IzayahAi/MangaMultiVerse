@@ -129,6 +129,25 @@ async function askClaudeServer(system, user, maxTokens = 300) {
   } catch { return null; }
 }
 
+// Server-side image generation for the Health Medic — uses Together's FREE FLUX (no funding needed) so a
+// re-render costs nothing. Returns a data URI / URL, or null. The browser never holds the Together key.
+async function togetherImage(prompt) {
+  const key = process.env.TOGETHER_API_KEY;
+  if (!key) return null;
+  try {
+    const r = await fetch("https://api.together.xyz/v1/images/generations", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "black-forest-labs/FLUX.1-schnell-Free", prompt: String(prompt || "manga panel").slice(0, 300), width: 512, height: 768, steps: 4, n: 1 }),
+    });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const b64 = d.data?.[0]?.b64_json;
+    const url = d.data?.[0]?.url;
+    return b64 ? `data:image/png;base64,${b64}` : (url || null);
+  } catch { return null; }
+}
+
 // The prod base URL to probe: an explicit PROD_URL, else this deployment (VERCEL_URL), else the known
 // production domain. Post-deploy the cron runs ON the new deployment, so VERCEL_URL verifies THAT build.
 function prodBase() {
@@ -682,6 +701,115 @@ const CHECKS = {
     const action = decision === "approve" ? "approved" : decision === "hide" ? "hidden" : "dismissed";
     await svc(`/rest/v1/review_queue?story_id=eq.${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ status: "resolved", action, decided_at: new Date().toISOString() }) });
     return { ok: true, story_id: id, decision, action };
+  },
+
+  // 🩹 Health Medic — scan: published stories whose panels have no rendered art (panel-level detail beyond
+  // the Broken-Link summary). Read-only + safe; runs anytime.
+  async medic_scan(_params, _ctx = {}) {
+    const stories = await svcJson(`/rest/v1/stories?status=eq.published&select=id,title,script&limit=2000`);
+    if (stories === null) return { armed: false, note: "Add SUPABASE_SERVICE_ROLE_KEY to arm." };
+    const gaps = [];
+    for (const s of stories) {
+      const sc = s.script || {};
+      const panels = Array.isArray(sc.panels) ? sc.panels : [];
+      const imgs = sc.panel_images && typeof sc.panel_images === "object" ? sc.panel_images : {};
+      let missing = 0;
+      panels.forEach((p, i) => { const has = (p && (p.image || p.img || p.url || p.image_url)) || imgs[i] || imgs[String(i)]; if (!has) missing++; });
+      if (missing) gaps.push({ id: s.id, title: s.title || null, panels: panels.length, missing });
+    }
+    gaps.sort((a, b) => b.missing - a.missing);
+    const totalMissing = gaps.reduce((a, g) => a + g.missing, 0);
+    return { armed: true, status: totalMissing ? "warn" : "ok", storiesWithGaps: gaps.length, totalMissing, gaps: gaps.slice(0, 30) };
+  },
+
+  // 🩹 Health Medic — heal: re-render the missing panels of ONE story via Together's free FLUX and write
+  // them into script.panel_images. Admin-only, capped, and NOT on the cron (a manual action) so the first
+  // write is always founder-triggered. ⚠️ Verify the reader picks up healed panels on a throwaway story
+  // before trusting this on real content.
+  async medic_heal(params, ctx = {}) {
+    if (ctx.actor !== "admin" && ctx.actor !== "cron") return { ok: false, note: "admin only" };
+    const id = params.story_id;
+    if (!id) return { ok: false, note: "need { story_id }" };
+    const rows = await svcJson(`/rest/v1/stories?id=eq.${encodeURIComponent(id)}&select=id,title,script&limit=1`);
+    if (rows === null) return { armed: false, note: "Add SUPABASE_SERVICE_ROLE_KEY to arm." };
+    if (!rows.length) return { ok: false, note: "story not found" };
+    const s = rows[0];
+    const sc = s.script || {};
+    const panels = Array.isArray(sc.panels) ? sc.panels : [];
+    const imgs = { ...(sc.panel_images && typeof sc.panel_images === "object" ? sc.panel_images : {}) };
+    const cap = Math.min(Number(params.max) || 8, 20);
+    let healed = 0; const done = [];
+    for (let i = 0; i < panels.length && healed < cap; i++) {
+      const p = panels[i] || {};
+      const has = (p.image || p.img || p.url || p.image_url) || imgs[i] || imgs[String(i)];
+      if (has) continue;
+      const scene = p.scene || p.description || s.title || "manga panel";
+      const url = await togetherImage(`${scene}, manga illustration, high quality, no text`);
+      if (url) { imgs[String(i)] = url; healed++; done.push(i); }
+    }
+    if (healed) {
+      await svc(`/rest/v1/stories?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ script: { ...sc, panel_images: imgs }, updated_at: new Date().toISOString() }) });
+    }
+    return { ok: true, story_id: id, healed, panels: done };
+  },
+
+  // ✨ Curator & Recommender — platform-wide shelves from the published catalog: trending (rating + views +
+  // recency), fresh, themed-by-genre, and optional Claude staff-picks. Read-only + safe. The homepage can
+  // consume this later; for now it surfaces on the Maintenance page.
+  async curate(_params, _ctx = {}) {
+    if (!SB_URL || !SB_ANON) return { armed: false, note: "Supabase not configured." };
+    let stories = [];
+    try {
+      const r = await fetch(`${SB_URL}/rest/v1/stories?status=eq.published&select=id,title,tagline,genre_tags,rating,views,updated_at&limit=500`, { headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` } });
+      stories = r.ok ? await r.json() : [];
+    } catch { stories = []; }
+    const now = Date.now();
+    const trend = (s) => (Number(s.rating) || 0) * 2 + (Number(s.views) || 0) * 0.01 + Math.max(0, 14 - (now - new Date(s.updated_at || 0).getTime()) / 864e5);
+    const pick = (s) => ({ id: s.id, title: s.title || null });
+    const trending = [...stories].sort((a, b) => trend(b) - trend(a)).slice(0, 8).map(pick);
+    const fresh = [...stories].sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0)).slice(0, 8).map(pick);
+    const byGenre = {};
+    stories.forEach((s) => (s.genre_tags || []).forEach((g) => (byGenre[g] = byGenre[g] || []).push(pick(s))));
+    const shelves = Object.entries(byGenre).filter(([, v]) => v.length >= 2).sort((a, b) => b[1].length - a[1].length).slice(0, 6).map(([genre, items]) => ({ genre, items: items.slice(0, 8) }));
+    let staffPicks = [];
+    if (process.env.ANTHROPIC_API_KEY && stories.length) {
+      const list = stories.slice(0, 40).map((s) => `${s.id} :: ${s.title} — ${s.tagline || ""}`).join("\n");
+      const out = await askClaudeServer(`You are the editor of a manga platform. From the list, choose up to 4 stories you'd feature on the homepage and give a <=10-word reason each. Reply ONLY a JSON array: [{"id":"...","reason":"..."}].`, list, 300);
+      if (out) { try { const arr = JSON.parse((out.match(/\[[\s\S]*\]/) || [out])[0]); if (Array.isArray(arr)) staffPicks = arr.filter((x) => x && x.id).slice(0, 4); } catch { /* ignore */ } }
+    }
+    return { armed: true, status: "ok", total: stories.length, trending, fresh, shelves, staffPicks };
+  },
+
+  // 🌐 Translator Queue — pre-translate the top published stories into the highest-reach languages, into the
+  // existing translations table, capped per run. Admin-only + NOT on the cron (a manual action) so token
+  // spend is always founder-triggered. Inert in the English-only demo; it's the launch-time worker. ⚠️ Verify
+  // one translation renders in the reader before trusting/cron-promoting.
+  async translate_queue(params, ctx = {}) {
+    if (ctx.actor !== "admin" && ctx.actor !== "cron") return { ok: false, note: "admin only" };
+    const stories = await svcJson(`/rest/v1/stories?status=eq.published&select=id,title,script,rating,views&order=updated_at.desc&limit=100`);
+    if (stories === null) return { armed: false, note: "Add SUPABASE_SERVICE_ROLE_KEY to arm." };
+    const existing = await svcJson(`/rest/v1/translations?select=story_id,language&limit=20000`) || [];
+    const have = new Set(existing.map((t) => `${t.story_id}::${t.language}`));
+    const TOP_LANGS = ["Spanish", "Portuguese", "French", "Indonesian", "Japanese"];
+    const cap = Math.min(Number(params.max) || 5, 15);
+    const top = [...stories].sort((a, b) => ((b.rating || 0) - (a.rating || 0)) || ((b.views || 0) - (a.views || 0))).slice(0, 20);
+    const jobs = [];
+    for (const s of top) { for (const lang of TOP_LANGS) { if (jobs.length >= cap) break; if (!have.has(`${s.id}::${lang}`)) jobs.push({ id: s.id, title: s.title || null, lang }); } if (jobs.length >= cap) break; }
+    if (params.dryRun) return { armed: true, ok: true, dryRun: true, jobs: jobs.length, planned: jobs };
+    const hasKey = !!process.env.ANTHROPIC_API_KEY;
+    let done = 0; const results = [];
+    for (const j of jobs) {
+      const story = top.find((s) => s.id === j.id);
+      const panels = Array.isArray(story?.script?.panels) ? story.script.panels : [];
+      const src = JSON.stringify(panels.map((p) => ({ scene: p?.scene, dialogue: p?.dialogue, caption: p?.caption })).slice(0, 60)).slice(0, 6000);
+      if (!hasKey) { results.push({ ...j, ok: false, note: "no model key" }); continue; }
+      const out = await askClaudeServer(`Translate the manga panel texts to ${j.lang}. Keep the SAME JSON array shape and keys; translate ONLY the string values. Reply ONLY the translated JSON array.`, src, 2000);
+      let data = null; if (out) { try { data = JSON.parse((out.match(/\[[\s\S]*\]/) || [out])[0]); } catch { data = null; } }
+      if (!data) { results.push({ ...j, ok: false, note: "translate failed" }); continue; }
+      await svc(`/rest/v1/translations?on_conflict=story_id,language`, { method: "POST", headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ story_id: j.id, language: j.lang, data }) });
+      done++; results.push({ ...j, ok: true });
+    }
+    return { armed: true, ok: true, jobs: jobs.length, done, results };
   },
 
   // Consolidated cron entry — runs every maintenance check that should fire unattended, in one call, so
