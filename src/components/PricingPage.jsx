@@ -52,7 +52,7 @@ export default function PricingPage({ auth, onRequestAuth }) {
               {p.highlight && <Tag c={C.purple}>Most popular</Tag>}
               <div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{p.name}</div>
-                <div style={{ fontSize: 26, fontWeight: 700, color: C.text, marginTop: 4 }}>${p.priceUsd}<span style={{ fontSize: 12, color: C.muted, fontWeight: 400 }}>{p.priceUsd ? " / mo" : ""}</span></div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: C.text, marginTop: 4 }}>${p.priceUsd}<span style={{ fontSize: 12, color: C.muted, fontWeight: 400 }}>{p.priceUsd ? (p.interval === "year" ? " / year" : " / mo") : ""}</span></div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
                 {p.perks.map((perk, i) => (

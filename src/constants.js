@@ -60,9 +60,9 @@ export const DEMO_MAX_CHAPTERS = 3;
 // Pricing display (client mirror of api/_pricing.js PLANS/PACKS — display only, no Stripe IDs/secrets).
 // `id` is what the client sends to /api/stripe-checkout; the server maps it to the real Stripe price.
 export const PLAN_TIERS = [
-  { id: "pro",        name: "Pro",        priceUsd: 15,  credits: 1500, perks: ["1,500 credits / month", "Unlimited stories & chapters", "Translation (12 languages)", "Character voices", "Ad-free reading"] },
-  { id: "studio",     name: "Studio",     priceUsd: 30,  credits: 3500, perks: ["3,500 credits / month", "Everything in Pro", "LoRA character training", "Priority generation"], highlight: true },
-  { id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 7000, perks: ["7,000 credits / month", "Full access — every feature", "Best for full-time creators", "Top up anytime for more"] },
+  { id: "pro",        name: "Pro",        priceUsd: 15,  credits: 8000,   perks: ["8,000 credits / month", "Unlimited stories & chapters", "Translation (12 languages)", "Character voices", "Ad-free reading"] },
+  { id: "studio",     name: "Studio",     priceUsd: 30,  credits: 16000,  perks: ["16,000 credits / month", "Everything in Pro", "LoRA character training", "Priority generation"], highlight: true },
+  { id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 100000, interval: "year", perks: ["100,000 credits for a full year", "Full access — every feature", "Best value — one year, one price", "Top up anytime for more"] },
 ];
 export const TOPUP_PACKS = [
   { id: "small",  name: "300 credits",    credits: 300,   priceUsd: 5 },

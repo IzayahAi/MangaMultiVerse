@@ -11,7 +11,7 @@ Dashboard → Products. Create these and copy each **Price ID** (`price_...`):
 |---|---|---|---|
 | Pro | Recurring · monthly | $15 | `STRIPE_PRICE_PRO` |
 | Studio | Recurring · monthly | $30 | `STRIPE_PRICE_STUDIO` |
-| Studio Pro | Recurring · monthly | $100 | `STRIPE_PRICE_STUDIO_PRO` |
+| Studio Pro | Recurring · **yearly** | $100 / year | `STRIPE_PRICE_STUDIO_PRO` |
 | 300 credits | One-time | $5 | `STRIPE_PRICE_PACK_SMALL` |
 | 1,000 credits | One-time | $15 | `STRIPE_PRICE_PACK_MEDIUM` |
 | 3,000 credits | One-time | $40 | `STRIPE_PRICE_PACK_LARGE` |
