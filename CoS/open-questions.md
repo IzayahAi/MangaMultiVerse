@@ -81,8 +81,9 @@ and verified live this session. Only a couple of founder-side items remain:_
   - **Verify the two data-writers on a throwaway story** before cron-promoting: Health Medic's `medic_heal`
     (does the reader pick up panels written to `script.panel_images`?) and the Translator Queue (does a
     written translation render? confirm the `translations` table's columns/shape match).
-  - **Wire Curator shelves into the public homepage** (App.jsx) — today it computes shelves but only shows
-    them on the Maintenance page; the last mile is rendering trending/staff-picks on the feed.
+  - ✅ **Curator shelves wired into the public homepage** (2026-09-22) — `src/lib/curation.js` (`buildShelves`,
+    the reader-facing mirror of the agent) renders 🔥 Trending + ✦ Fresh + themed-by-genre rows on the home
+    feed (client-side, no cost). Verified in preview. (Claude "staff picks" stay admin-only in the agent.)
   - Ops Analyst → scheduled remains a later nicety.
   - **Non-agent additions (non-funding), still open:** self-serve account/data deletion (GDPR/app-store),
     lightweight privacy-respecting analytics, signup bot/abuse hardening, feed pagination, a legal review of

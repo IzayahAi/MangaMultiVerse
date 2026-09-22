@@ -16,6 +16,7 @@ import PricingPage from "./components/PricingPage.jsx";
 import AgeGate from "./components/AgeGate.jsx";
 import LegalPage from "./components/LegalPage.jsx";
 import { SUPPORT_EMAIL } from "./constants.js";
+import { buildShelves } from "./lib/curation.js";
 
 export default function MangaMultiVerse() {
   const C = useTheme();
@@ -66,6 +67,8 @@ export default function MangaMultiVerse() {
   [...publicStories, ...myPublished].forEach(s => publishedMap.set(s.id, s));
   const published = [...publishedMap.values()];
   const all = [...SEED_LIB, ...published];
+  // ✨ Curator — reader-facing shelves from the published catalog (mirrors the curate agent). Cheap, instant.
+  const shelves = buildShelves(published);
 
   // Deep link: /s/<id> (the sitemap + share URLs) opens that published story in the reader, once the
   // catalog has loaded. A ref makes it fire only once so it doesn't re-open after the user navigates.
@@ -303,25 +306,31 @@ export default function MangaMultiVerse() {
                         )}
                       </div>
                     )}
-                    {published.length>3&&(
-                      <div style={{marginBottom:20}}>
-                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-                          <div style={{fontSize:13,fontWeight:600,color:C.text}}>{t("home.trending")}</div>
-                          <button onClick={()=>go("library")} style={{fontSize:11,color:C.purple,background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit"}}>View all →</button>
+                    {/* ✨ Curator shelves — trending, fresh, and themed-by-genre rows (Netflix/Webtoon style). */}
+                    {(() => {
+                      const Shelf = ({ label, items, viewAll }) => (items && items.length) ? (
+                        <div style={{marginBottom:22}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                            <div style={{fontSize:13,fontWeight:600,color:C.text}}>{label}</div>
+                            {viewAll && <button onClick={()=>go("library")} style={{fontSize:11,color:C.purple,background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit"}}>View all →</button>}
+                          </div>
+                          <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:6,scrollbarWidth:"thin"}}>
+                            {items.map(item=>(
+                              <div key={item.id} style={{width:148,flexShrink:0}}>
+                                <CoverCard item={item} aiMade={!!item.author_name&&!item.author} onClick={()=>{setSel(item);setPage("library");}}/>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-                          {[...published].sort((a,b)=>(b.rating||0)-(a.rating||0)).slice(0,3).map(item=><CoverCard key={item.id} item={item} aiMade onClick={()=>{setSel(item);setPage("library");}}/>)}
+                      ) : null;
+                      return (
+                        <div>
+                          <Shelf label={`🔥 ${t("home.trending")}`} items={shelves.trending} viewAll />
+                          <Shelf label="✦ Fresh from creators" items={shelves.fresh} />
+                          {shelves.genreShelves.map(sh => <Shelf key={sh.genre} label={sh.genre} items={sh.items} />)}
                         </div>
-                      </div>
-                    )}
-                    {published.length>0&&(
-                      <div style={{marginBottom:20}}>
-                        <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:12}}>✦ New from creators</div>
-                        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-                          {[...published].sort((a,b)=>new Date(b.published_at||b.updated_at||b.created_at||0)-new Date(a.published_at||a.updated_at||a.created_at||0)).slice(0,6).map(item=><CoverCard key={item.id} item={item} aiMade onClick={()=>{setSel(item);setPage("library");}}/>)}
-                        </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 )}
 
