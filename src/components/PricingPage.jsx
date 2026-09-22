@@ -27,7 +27,7 @@ export default function PricingPage({ auth, onRequestAuth }) {
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto" }}>
       <div style={{ textAlign: "center", marginBottom: 26 }}>
-        <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Cinzel',serif", color: C.text }}>Plans &amp; Pricing</div>
+        <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Cinzel',serif", color: C.text }}>Subscription</div>
         <div style={{ fontSize: 13, color: C.muted, marginTop: 6 }}>Create more manga. Cancel anytime. Run out? Top up instantly.</div>
         {currentPlan !== "free" && signedIn && (
           <div style={{ marginTop: 12 }}>
