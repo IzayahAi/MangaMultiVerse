@@ -180,3 +180,5 @@ export const STYLE_NATIVE = {
   "GL-EN": "English", "PRISMA": "English",
 };
 
+
+// build marker: force fresh Vercel build to pick up VITE_SUPABASE_ANON_KEY
