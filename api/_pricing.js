@@ -93,10 +93,7 @@ export const PLANS = {
 
 // One-time credit top-ups (never expire). `mode: "payment"` in Stripe Checkout.
 export const PACKS = {
-  small:  { id: "small",  name: "300 credits",    credits: 300,   priceUsd: 5,   stripePrice: process.env.STRIPE_PRICE_PACK_SMALL  || null },
-  medium: { id: "medium", name: "1,000 credits",  credits: 1000,  priceUsd: 15,  stripePrice: process.env.STRIPE_PRICE_PACK_MEDIUM || null },
-  large:  { id: "large",  name: "3,000 credits",  credits: 3000,  priceUsd: 40,  stripePrice: process.env.STRIPE_PRICE_PACK_LARGE  || null },
-  xl:     { id: "xl",     name: "10,000 credits", credits: 10000, priceUsd: 120, stripePrice: process.env.STRIPE_PRICE_PACK_XL     || null },
+  topup: { id: "topup", name: "5,000 credits", credits: 5000, priceUsd: 10, stripePrice: process.env.STRIPE_PRICE_PACK || null },
 };
 
 export const planFor = (id) => PLANS[id] || PLANS.free;

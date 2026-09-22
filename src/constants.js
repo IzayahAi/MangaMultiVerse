@@ -65,10 +65,7 @@ export const PLAN_TIERS = [
   { id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 60000, interval: "year", perks: ["60,000 credits for a full year", "Full access — every feature", "Best value — one year, one price", "Top up anytime for more"] },
 ];
 export const TOPUP_PACKS = [
-  { id: "small",  name: "300 credits",    credits: 300,   priceUsd: 5 },
-  { id: "medium", name: "1,000 credits",  credits: 1000,  priceUsd: 15 },
-  { id: "large",  name: "3,000 credits",  credits: 3000,  priceUsd: 40 },
-  { id: "xl",     name: "10,000 credits", credits: 10000, priceUsd: 120 },
+  { id: "topup", name: "5,000 credits", credits: 5000, priceUsd: 10 },
 ];
 
 // Per-plan feature flags (client mirror of api/_pricing.js PLANS[].features). `maxStories: null` = unlimited.
