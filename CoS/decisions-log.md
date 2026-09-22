@@ -2,6 +2,31 @@
 
 _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
+## 2026-09-22
+
+- **Pricing model finalized + made real.** Demo grant → 500, and now a TRUE one-time per-account
+  allotment: credits deplete server-side in demo too (via `spend_credits`, which the founder armed along
+  with the 500 signup trigger), no daily reset. Free tier → read-only (read + be on the site,
+  ad-supported) and removed from the Subscription page (Pricing renamed → Subscription). Credit
+  allotments set to **Pro 1,500 / Studio 3,500 / Studio Pro 7,000** — profitable on Together's free-tier
+  images; would need revisiting (or higher prices / higher per-panel credit cost) if paid tiers move to
+  Fal-quality art. — Mr. K
+
+- **Ad revenue path chosen: ad-supported free reading.** Built an ad-gate scaffold — a 15s interstitial
+  every ~6 chapters for non-paying viewers, ad-free for paid plans, launch-only. Real ad revenue waits on
+  an ad network + public traffic (rendered into the `#mv-ad-slot` placeholder). — Mr. K
+
+- **Studio funnel: guests write-your-own only.** Signed-in creators keep the full seed tools
+  (Trending/For you/Wizard); guests get a clean write-your-own screen + a "Sign in to save your story"
+  promo. No unprompted seed generation for guests. — Mr. K
+
+- **Kids + adults on one platform, via an age gate — mature THEMES only, never explicit.** Decided against
+  explicit/NSFW: Stripe bans it and the AI stack can't generate it. Shipped per-story content ratings
+  (all/teen/mature) + a self-attested 18+ AgeGate; Mature is reader-gated and its covers are blurred + 18+
+  badged for unverified viewers so kids never see mature art. Both audiences monetize through the same
+  subscription tiers; mature is gated by age, not a separate paywall. Strict separation kept; no adult
+  payment processor, no explicit generation. — Mr. K
+
 ## 2026-09-21
 
 - **Pricing & subscriptions decided + built (Stripe, behind the launch gate).** After cost-modeling with

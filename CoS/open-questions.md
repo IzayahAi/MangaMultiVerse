@@ -19,14 +19,15 @@ JSON — Mr. K is live in production and the weekly cron is active. Nothing to r
 - **Billing go-live: founder Stripe setup.** The pricing/subscription code is shipped but inert. Needs:
   create Stripe products/prices, set `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` + price IDs in Vercel,
   register the webhook, run `db/billing.sql`, then flip `RELEASE_MODE`/`VITE_RELEASE_MODE`. Full checklist:
-  `BILLING_SETUP.md`.
-- **Hide credit balance from everyone, or show it to paying users?** Built to show the balance to paid
-  plans (so they know when to top up) and hide on Free — but the founder earlier wanted it fully hidden.
-  Confirm which before launch.
-
-- **Arm `db/spend_credits.sql` + `RELEASE_MODE`?** The secure credit path is coded but the SQL isn't run
-  and the gate is off (demo). Flip at launch. (Note: the client-set-grant hole is now closed server-side
-  regardless — signup trigger + profiles.role/credits column locks, verified 2026-09-21.)
+  `BILLING_SETUP.md`. (`spend_credits.sql` + the 500 signup trigger are already run/armed.)
+- **Run `db/content_rating.sql`** — the age-gate maturity column. Pending; ratings won't persist until run.
+- **At launch, drop the signup-trigger grant** from 500 → 0 (Free is read-only). Noted in
+  `db/signup_trigger.sql`.
+- **Credit allotments assume Together (free) images.** Pro 1,500 / Studio 3,500 / Studio Pro 7,000 are
+  profitable on Together but lose money on Fal (~$0.02/panel) — revisit prices or per-panel credit cost if
+  paid tiers move to Fal-quality art.
+- **Hide credit balance vs show to payers?** Currently built to show balance to paid plans, hide on Free.
+  Confirm before launch (founder earlier leaned toward fully hidden).
 - **Promote maintenance agents from manual → autonomous?** All 12 are built; uptime/integrity/posture/
   deps/spend/deploy/tamper already run on the daily `cron_tick` with inbox alerts. Next level is
   approval-gated auto-remediation (the Tier-3 "ACTION NEEDED" pattern) — not scheduled.
