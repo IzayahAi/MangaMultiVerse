@@ -34,10 +34,10 @@ export const LANGS = LANG_GROUPS.flatMap(g => g.langs);
 // translation pickers as "Recommended" so creators pre-generate the ones that matter most.
 export const RECOMMENDED_LANGS = ["Spanish","Portuguese","French","Indonesian","Chinese (Simplified)","Japanese","Korean","German","Russian","Arabic"];
 
-// Support / legal contact. ⚠️ FOUNDER: point this at a real, monitored inbox before public launch
-// (set up support@mangamultiverse.com, or change this to whatever address you'll actually watch).
-// Referenced by the footer + the Terms / Privacy / Content-policy pages (LegalPage.jsx).
-export const SUPPORT_EMAIL = "support@mangamultiverse.com";
+// Support / legal contact — must be a real, monitored inbox (it's the contact + data-deletion + abuse-report
+// path on the Terms / Privacy / Content-policy pages and the footer). ⚠️ FOUNDER: make sure this exact
+// Gmail is registered and you actually watch it. Referenced by the footer + LegalPage.jsx.
+export const SUPPORT_EMAIL = "mangamultiverse.support@gmail.com";
 
 // Launch gate (client mirror of the server's RELEASE_MODE). OFF (default) = demo/beta: keys are
 // server-side but auth/credit enforcement is relaxed. ON = release: guests can't trigger live AI.
