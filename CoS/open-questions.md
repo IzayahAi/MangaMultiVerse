@@ -10,18 +10,27 @@ JSON — Mr. K is live in production and the weekly cron is active. Nothing to r
 
 ## Public-demo launch (no billing) — founder-side to go live
 
-_Decided 2026-09-22: free public demo, gate stays OFF, Together fallback, no Stripe. Code is done + verified
-(legal pages shipped this session, left in the working tree). What's left is all founder-side:_
+_Decided 2026-09-22: free public demo, gate stays OFF, Together fallback, no Stripe. Code is done, deployed,
+and verified live this session. Only a couple of founder-side items remain:_
 
-- **Point `SUPPORT_EMAIL` at a real, monitored inbox** (`src/constants.js`, currently
-  `support@mangamultiverse.com` placeholder). It's the contact on Terms/Privacy/Content-Policy + footer.
-- **Decide the account-count ceiling.** No `DEMO_MAX_USERS` today; open signups are bounded only by the
-  per-IP cap + the 500-credit per-account allotment + free Together images. Options: rely on per-IP cap +
-  funded Anthropic budget + Spend Sentinel (lowest effort); add a hard signup cap; or lower `DEMO_CREDITS`.
-- **Confirm Anthropic budget + a spend alert** (the only real burn — images are free on Together).
-- **Commit + deploy the legal pages, then flip nothing** (gate stays off) and smoke-test as a fresh public
-  user (incognito): read → sign up → create → Together render → publish → report → admin hide.
+**Remaining:**
+- **Confirm a funded Anthropic budget + a spend alert** (the only real burn — images are free on Together).
+- **Run the incognito smoke test**, then announce: guest read → sign up → create → Together render →
+  publish → ⚑ report → admin hide.
+- **Decide the account-count ceiling** (still open). No `DEMO_MAX_USERS`; open signups are bounded by the
+  per-IP cap + the 500-credit per-account allotment + free Together images. Options: rely on that + the
+  Spend Sentinel (lowest effort); add a hard signup cap; or lower `DEMO_CREDITS`. Recommendation: ship on
+  the per-IP cap + budget alert; only add a hard cap if burn looks scary.
 - Have the beta policies **reviewed** before scaling / turning on billing.
+- Optional: turn on the support inbox's Gmail **auto-reply** (draft provided in-session).
+
+**Resolved this session:**
+- ✅ Legal pages (Terms / Privacy / Content Policy) shipped, teen-first, deployed + verified live.
+- ✅ `SUPPORT_EMAIL` = `mangamultiverse.support@gmail.com` (real inbox, founder created it). Receive-only —
+  the app only links a `mailto:`, so no SPF/DKIM/deliverability setup needed.
+- ✅ Supabase **Confirm email is OFF** → public signup is instant, no email round-trip, no deliverability
+  risk. ⚠️ If it's ever flipped back ON, a custom SMTP provider (Resend/SendGrid/Postmark) is required
+  first — Supabase's built-in sender throttles real signups.
 
 ## Blocking
 
