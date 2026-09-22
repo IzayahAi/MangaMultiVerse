@@ -118,6 +118,7 @@ export async function guard(req, action, provider) {
       try {
         const c = await chargeCredits(token, amount);
         if (c.unarmed) { await recordSpend(req, action, provider, 0); return { ok: true, balance: null }; } // RPC not armed yet → per-IP only
+        if (c.status === 401) { await recordSpend(req, action, provider, 0); return { ok: true, balance: null }; } // expired/invalid JWT in demo → fall back to per-IP cap, don't block
         if (!c.ok) return c; // 402 when the one-time demo allotment is used up
         await recordSpend(req, action, provider, amount);
         return { ok: true, balance: c.balance };
