@@ -83,13 +83,17 @@ export function featuresFor(user) {
   return PLAN_FEATURES[user?.plan || "free"] || PLAN_FEATURES.free;
 }
 
-// Content maturity ratings (per story). Mature is age-gated (18+); mature = dark/suggestive themes, NOT
-// explicit — the AI providers don't generate explicit content. Stored in stories.content_rating.
+// Content maturity ratings (per story). This is a TEEN-FIRST platform (13+) — the house style skews
+// dark/gory (murim, horror, action), which is Teen/Older-Teen territory, not all-ages. So "Teen" is the
+// default and there is no "All ages" tier. Mature is age-gated (18+) and reserved for the genuinely heavy
+// slice — sexual themes (short of explicit) or gratuitous gore; NOT explicit (the AI won't generate it).
+// Stored in stories.content_rating. Legacy rows with content_rating="all" fall through ratingOf to Teen.
 export const CONTENT_RATINGS = [
-  { id: "all",    label: "All ages", badge: "A",   color: "#3fb950" },
   { id: "teen",   label: "Teen",     badge: "T",   color: "#d29922" },
   { id: "mature", label: "Mature",   badge: "18+", color: "#e24b4a" },
 ];
+export const DEFAULT_RATING = "teen";
+// ratingOf falls back to Teen for any unknown/legacy id (e.g. the retired "all").
 export const ratingOf = (id) => CONTENT_RATINGS.find((r) => r.id === id) || CONTENT_RATINGS[0];
 
 // Age verification (self-attested, for mature THEMES — not explicit). Persisted per browser.

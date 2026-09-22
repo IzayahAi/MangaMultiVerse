@@ -4,6 +4,17 @@ _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
 ## 2026-09-22
 
+- **Teen-first platform: dropped "All ages", made Teen the default rating.** SUPERSEDES the "kids + adults
+  on one platform" call below. Founder's reasoning: the house style is genuinely gory (murim, horror,
+  action) — not appropriate for young kids, and "all ages" was never real for this catalog. Reframed the
+  age gate as a *distribution* asset (ad-network / app-store / Stripe eligibility), not a monetization
+  lever — mature-as-a-paywall is a dead end (Stripe bans explicit, stores block it, the AI won't generate
+  it). Calibration kept: blood/gore alone is Teen (cf. Demon Slayer / AoT), so Teen is the default bucket
+  and 18+ Mature is reserved for the heavy slice (sexual themes short of explicit, or gratuitous gore).
+  Collapsed the rating model 3→2 (`CONTENT_RATINGS` in constants.js; `DEFAULT_RATING="teen"`; PublishModal
+  + Studio defaults; legacy "all" rows fall through `ratingOf` → Teen). Monetization stays uniform across
+  ratings (credits/subscription/ads). — Mr. K
+
 - **Chose a free PUBLIC-demo launch (no billing) + shipped the legal surface it needed.** Founder wants to
   open the app to the public as a free demo with the gate **OFF** (`RELEASE_MODE` off, Together image
   fallback, no Stripe). Reconciled launch-readiness against the live backend — several docs were stale:
@@ -30,7 +41,9 @@ _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
   (Trending/For you/Wizard); guests get a clean write-your-own screen + a "Sign in to save your story"
   promo. No unprompted seed generation for guests. — Mr. K
 
-- **Kids + adults on one platform, via an age gate — mature THEMES only, never explicit.** Decided against
+- **Kids + adults on one platform, via an age gate — mature THEMES only, never explicit.** _(SUPERSEDED
+  same day — see the teen-first decision at the top of 2026-09-22: "All ages" was dropped, Teen is now the
+  default. The mature-themes/never-explicit and age-gate parts still stand.)_ Decided against
   explicit/NSFW: Stripe bans it and the AI stack can't generate it. Shipped per-story content ratings
   (all/teen/mature) + a self-attested 18+ AgeGate; Mature is reader-gated and its covers are blurred + 18+
   badged for unverified viewers so kids never see mature art. Both audiences monetize through the same

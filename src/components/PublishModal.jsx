@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LANG_GROUPS, RECOMMENDED_LANGS, rndCover, TRANSLATION_ENABLED, CONTENT_RATINGS } from "../constants.js";
+import { LANG_GROUPS, RECOMMENDED_LANGS, rndCover, TRANSLATION_ENABLED, CONTENT_RATINGS, DEFAULT_RATING } from "../constants.js";
 import { fetchTranslatedLangs } from "../lib/supabase.js";
 import { Tag, Btn, Spinner } from "./UI.jsx";
 import { useTheme } from "../ThemeContext.jsx";
@@ -7,7 +7,8 @@ import { useTheme } from "../ThemeContext.jsx";
 export default function PublishModal({story, onPublish, onClose, saving, progress, canTranslate = TRANSLATION_ENABLED, maxLangs = 999}) {
   const C = useTheme();
   const [autoLangs,setAuto] = useState(["Spanish","French","German","Portuguese"]);
-  const [rating,setRating] = useState(story?.content_rating || "all");
+  // Legacy "all" rows and un-rated stories default to Teen (this is a teen-first platform).
+  const [rating,setRating] = useState(() => { const r = story?.content_rating; return (r && r !== "all") ? r : DEFAULT_RATING; });
   const [storedLangs,setStoredLangs] = useState([]); // already translated → pre-selected + marked ✓
   const tog = l => setAuto(p => p.includes(l)?p.filter(x=>x!==l):[...p,l]);
   const ALL_LANGS = LANG_GROUPS.flatMap(g=>g.langs).filter(l=>l!=="English");

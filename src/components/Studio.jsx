@@ -1,5 +1,5 @@
 ﻿import { useState, useRef, useEffect } from "react";
-import { SEEDS, rndEmoji, rndCover, MOOD_PALETTES, getMood, LANG_GROUPS, RECOMMENDED_LANGS, STYLE_NATIVE, MAX_LANGS_PER_PUBLISH, TRANSLATION_ENABLED, DEMO_MAX_STORIES, DEMO_MAX_CHAPTERS, RELEASE_MODE, featuresFor } from "../constants.js";
+import { SEEDS, rndEmoji, rndCover, MOOD_PALETTES, getMood, LANG_GROUPS, RECOMMENDED_LANGS, STYLE_NATIVE, MAX_LANGS_PER_PUBLISH, TRANSLATION_ENABLED, DEMO_MAX_STORIES, DEMO_MAX_CHAPTERS, RELEASE_MODE, featuresFor, DEFAULT_RATING } from "../constants.js";
 import { useTheme } from "../ThemeContext.jsx";
 import {
   askClaude, generatePanelImage, trainCharacterLora,
@@ -944,7 +944,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     return out;
   };
 
-  const publish = async (langs, rating = "all") => {
+  const publish = async (langs, rating = DEFAULT_RATING) => {
     // Don't let a chapter ship with panels but no hosted art — readers would see blanks.
     if (script?.panels?.length && !Object.keys(publicPanelImages()).length &&
         !window.confirm("This chapter has no saved panel art yet, so readers on other devices will see empty panels.\n\nGenerate panels first for the full experience — publish anyway?")) return;
