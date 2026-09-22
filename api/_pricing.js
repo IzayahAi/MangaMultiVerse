@@ -77,15 +77,15 @@ export const PLANS = {
     features: { translate: false, voice: false, maxLangs: 1, lora: false, maxStories: 0, fullAccess: false },
   },
   pro: {
-    id: "pro", name: "Pro", priceUsd: 25, credits: 700, stripePrice: process.env.STRIPE_PRICE_PRO || null,
+    id: "pro", name: "Pro", priceUsd: 25, credits: 2000, stripePrice: process.env.STRIPE_PRICE_PRO || null,
     features: { translate: true, voice: true, maxLangs: 12, lora: false, maxStories: null, fullAccess: false },
   },
   studio: {
-    id: "studio", name: "Studio", priceUsd: 50, credits: 1600, stripePrice: process.env.STRIPE_PRICE_STUDIO || null,
+    id: "studio", name: "Studio", priceUsd: 50, credits: 5000, stripePrice: process.env.STRIPE_PRICE_STUDIO || null,
     features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, fullAccess: false },
   },
   studio_pro: {
-    id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 4000, stripePrice: process.env.STRIPE_PRICE_STUDIO_PRO || null,
+    id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 12000, stripePrice: process.env.STRIPE_PRICE_STUDIO_PRO || null,
     features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, fullAccess: true },
   },
 };
