@@ -77,11 +77,11 @@ export const PLANS = {
     features: { translate: false, voice: false, maxLangs: 1, lora: false, maxStories: 0, fullAccess: false },
   },
   pro: {
-    id: "pro", name: "Pro", priceUsd: 25, credits: 1500, stripePrice: process.env.STRIPE_PRICE_PRO || null,
+    id: "pro", name: "Pro", priceUsd: 15, credits: 1500, stripePrice: process.env.STRIPE_PRICE_PRO || null,
     features: { translate: true, voice: true, maxLangs: 12, lora: false, maxStories: null, fullAccess: false },
   },
   studio: {
-    id: "studio", name: "Studio", priceUsd: 50, credits: 3500, stripePrice: process.env.STRIPE_PRICE_STUDIO || null,
+    id: "studio", name: "Studio", priceUsd: 30, credits: 3500, stripePrice: process.env.STRIPE_PRICE_STUDIO || null,
     features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, fullAccess: false },
   },
   studio_pro: {

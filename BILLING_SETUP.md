@@ -9,8 +9,8 @@ Dashboard → Products. Create these and copy each **Price ID** (`price_...`):
 
 | Product | Type | Price | Env var for its Price ID |
 |---|---|---|---|
-| Pro | Recurring · monthly | $25 | `STRIPE_PRICE_PRO` |
-| Studio | Recurring · monthly | $50 | `STRIPE_PRICE_STUDIO` |
+| Pro | Recurring · monthly | $15 | `STRIPE_PRICE_PRO` |
+| Studio | Recurring · monthly | $30 | `STRIPE_PRICE_STUDIO` |
 | Studio Pro | Recurring · monthly | $100 | `STRIPE_PRICE_STUDIO_PRO` |
 | 300 credits | One-time | $5 | `STRIPE_PRICE_PACK_SMALL` |
 | 1,000 credits | One-time | $15 | `STRIPE_PRICE_PACK_MEDIUM` |
