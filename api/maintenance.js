@@ -713,8 +713,9 @@ const CHECKS = {
       const sc = s.script || {};
       const panels = Array.isArray(sc.panels) ? sc.panels : [];
       const imgs = sc.panel_images && typeof sc.panel_images === "object" ? sc.panel_images : {};
+      // panel_images is keyed by the panel's NUMBER (MangaReader: panelImages[p.number]), not the array index.
       let missing = 0;
-      panels.forEach((p, i) => { const has = (p && (p.image || p.img || p.url || p.image_url)) || imgs[i] || imgs[String(i)]; if (!has) missing++; });
+      panels.forEach((p) => { const has = (p && (p.image || p.img || p.url || p.image_url)) || imgs[p?.number]; if (!has) missing++; });
       if (missing) gaps.push({ id: s.id, title: s.title || null, panels: panels.length, missing });
     }
     gaps.sort((a, b) => b.missing - a.missing);
@@ -738,19 +739,24 @@ const CHECKS = {
     const panels = Array.isArray(sc.panels) ? sc.panels : [];
     const imgs = { ...(sc.panel_images && typeof sc.panel_images === "object" ? sc.panel_images : {}) };
     const cap = Math.min(Number(params.max) || 8, 20);
-    let healed = 0; const done = [];
+    let healed = 0, skippedDataUri = 0; const done = [];
     for (let i = 0; i < panels.length && healed < cap; i++) {
       const p = panels[i] || {};
-      const has = (p.image || p.img || p.url || p.image_url) || imgs[i] || imgs[String(i)];
+      // Keyed by panel NUMBER, matching MangaReader's panelImages[p.number]. Fall back to the index only if
+      // the panel has no number (shouldn't happen for generated scripts).
+      const key = p.number != null ? p.number : i;
+      const has = (p.image || p.img || p.url || p.image_url) || imgs[key];
       if (has) continue;
-      const scene = p.scene || p.description || s.title || "manga panel";
+      const scene = p.scene || p.scene_description || p.description || s.title || "manga panel";
       const url = await togetherImage(`${scene}, manga illustration, high quality, no text`);
-      if (url) { imgs[String(i)] = url; healed++; done.push(i); }
+      // Only STORE http(s) URLs to the DB row — data: URIs bloat the jsonb (publicPanelImages skips them too).
+      if (url && /^https?:\/\//.test(url)) { imgs[key] = url; healed++; done.push(key); }
+      else if (url) { skippedDataUri++; }
     }
     if (healed) {
       await svc(`/rest/v1/stories?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ script: { ...sc, panel_images: imgs }, updated_at: new Date().toISOString() }) });
     }
-    return { ok: true, story_id: id, healed, panels: done };
+    return { ok: true, story_id: id, healed, panels: done, skippedDataUri };
   },
 
   // ✨ Curator & Recommender — platform-wide shelves from the published catalog: trending (rating + views +
@@ -801,12 +807,17 @@ const CHECKS = {
     for (const j of jobs) {
       const story = top.find((s) => s.id === j.id);
       const panels = Array.isArray(story?.script?.panels) ? story.script.panels : [];
-      const src = JSON.stringify(panels.map((p) => ({ scene: p?.scene, dialogue: p?.dialogue, caption: p?.caption })).slice(0, 60)).slice(0, 6000);
+      if (!panels.length) { results.push({ ...j, ok: false, note: "no panels" }); continue; }
       if (!hasKey) { results.push({ ...j, ok: false, note: "no model key" }); continue; }
-      const out = await askClaudeServer(`Translate the manga panel texts to ${j.lang}. Keep the SAME JSON array shape and keys; translate ONLY the string values. Reply ONLY the translated JSON array.`, src, 2000);
-      let data = null; if (out) { try { data = JSON.parse((out.match(/\[[\s\S]*\]/) || [out])[0]); } catch { data = null; } }
-      if (!data) { results.push({ ...j, ok: false, note: "translate failed" }); continue; }
-      await svc(`/rest/v1/translations?on_conflict=story_id,language`, { method: "POST", headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ story_id: j.id, language: j.lang, data }) });
+      // Mirror the client P_TRANSLATE contract EXACTLY so MangaReader.applyTranslation can consume it:
+      // data = { language, chapter_title, panels: [{ number, dialogue: [{character,type,original,translated,voice_note}] }] }.
+      const sys = `You are a manga translator. Translate the script to ${j.lang}. Respond ONLY with valid JSON in EXACTLY this shape: {"language":"${j.lang}","chapter_title":"<title in ${j.lang}>","panels":[{"number":1,"dialogue":[{"character":"name","type":"speech|thought|narration|sfx","original":"<source text>","translated":"<${j.lang} text>","voice_note":""}]}]}. Rules: translate EVERY dialogue line into ${j.lang}; return the SAME number of dialogue entries per panel in the SAME order; keep each panel's original "number"; SFX text may stay as-is.`;
+      const userMsg = JSON.stringify(panels.slice(0, 60)).slice(0, 8000);
+      const out = await askClaudeServer(sys, userMsg, 4000);
+      let data = null; if (out) { try { data = JSON.parse((out.match(/\{[\s\S]*\}/) || [out])[0]); } catch { data = null; } }
+      if (!data || !Array.isArray(data.panels)) { results.push({ ...j, ok: false, note: "translate failed" }); continue; }
+      // translations is keyed by id = `${storyId}_${language}` (matches saveTranslation + fetchTranslation).
+      await svc(`/rest/v1/translations?on_conflict=id`, { method: "POST", headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ id: `${j.id}_${j.lang}`, story_id: j.id, language: j.lang, data, updated_at: new Date().toISOString() }) });
       done++; results.push({ ...j, ok: true });
     }
     return { armed: true, ok: true, jobs: jobs.length, done, results };
