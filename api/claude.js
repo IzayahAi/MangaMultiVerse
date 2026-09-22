@@ -1,9 +1,9 @@
 import { guard, corsHeaders } from "./_guard.js";
 
 // Node.js runtime (not edge) — edge functions cap at ~25s, which a full chapter-script generation
-// (up to 8000 output tokens) can exceed, causing FUNCTION_INVOCATION_TIMEOUT. maxDuration below raises
-// the ceiling; every other proxy in this codebase (fal.js, eleven.js, translate.js) is already Node.
-export const maxDuration = 60;
+// (up to 8000 output tokens) can exceed, causing FUNCTION_INVOCATION_TIMEOUT. maxDuration is raised via
+// vercel.json's functions field (this Vite/Node builder doesn't read the Next.js-style in-file export).
+// Every other proxy in this codebase (fal.js, eleven.js, translate.js) is already Node.
 
 export default async function handler(req, res) {
   const cors = corsHeaders(req);

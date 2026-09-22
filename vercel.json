@@ -1,4 +1,7 @@
 {
+  "functions": {
+    "api/claude.js": { "maxDuration": 60 }
+  },
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "/api/discovery?kind=sitemap" },
     { "source": "/robots.txt", "destination": "/api/discovery?kind=robots" },
