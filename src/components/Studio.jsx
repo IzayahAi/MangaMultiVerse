@@ -1174,6 +1174,16 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
         <div style={{fontSize:13,color:C.muted}}>Pick a style, describe your idea, and AI builds the rest.</div>
       </div>
 
+      {!user && (
+        <div onClick={()=>onRequestAuth?.()} role="button" style={{marginBottom:18,padding:"14px 18px",borderRadius:12,border:`0.5px solid ${C.purple}`,background:`linear-gradient(135deg,${C.purple}22,${C.pink}0f)`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:600,color:C.text}}>✦ Sign in for a free demo</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:2}}>Get 500 free credits to create your first manga — no payment, just yours to keep.</div>
+          </div>
+          <span style={{fontSize:13,fontWeight:600,color:"#fff",background:`linear-gradient(135deg,${C.purple},${C.pink})`,padding:"9px 18px",borderRadius:8,whiteSpace:"nowrap"}}>Sign in →</span>
+        </div>
+      )}
+
       <div style={{marginBottom:18}}>
         <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Art style & language</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7}}>
