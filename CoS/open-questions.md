@@ -46,6 +46,15 @@ and verified live this session. Only a couple of founder-side items remain:_
 
 ## Waiting / to decide
 
+- **Art-quality upgrade — parked (decided 2026-09-22 to stay cheap for now).** Current chain is Together
+  Juggernaut Lightning Flux (primary) → DeepInfra FLUX-schnell (fallback) — both fast/cheap distills. Founder:
+  "leave lightning flux and deepinfra flux schnell as backup and we can work our way up later." When ready
+  to climb, the "best art for low cost" candidates (per 50-panel chapter, all ≤ Fal's ~$1) are: Together
+  Juggernaut Pro Flux ~$0.245 (value quality tier), DeepInfra FLUX-2-klein-9b ~$0.75 or Together FLUX.2 dev
+  ~$0.77 (frontier Flux 2). Upgrade = a one-line model swap in `api/image.js` (primary) + optionally the
+  DeepInfra model. Best decided by an A/B: generate the same panel across these and eyeball, then lock in.
+  Needs both accounts funded first (Together for the paid primary, DeepInfra for the fallback).
+
 - **Billing go-live: founder Stripe setup.** The pricing/subscription code is shipped but inert. Needs:
   create Stripe products/prices, set `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` + price IDs in Vercel,
   register the webhook, run `db/billing.sql`, then flip `RELEASE_MODE`/`VITE_RELEASE_MODE`. Full checklist:
