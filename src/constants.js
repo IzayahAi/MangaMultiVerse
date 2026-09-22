@@ -47,6 +47,21 @@ export const TRANSLATION_ENABLED = RELEASE_MODE;
 // chapters. Depth over breadth — fewer stories, more chapters each.
 export const DEMO_MAX_STORIES = 2;
 export const DEMO_MAX_CHAPTERS = 3;
+
+// Pricing display (client mirror of api/_pricing.js PLANS/PACKS — display only, no Stripe IDs/secrets).
+// `id` is what the client sends to /api/stripe-checkout; the server maps it to the real Stripe price.
+export const PLAN_TIERS = [
+  { id: "free",       name: "Free",       priceUsd: 0,   credits: 100,  perks: ["100 credits / month", "Read everything", "Create up to 2 stories", "English only"] },
+  { id: "pro",        name: "Pro",        priceUsd: 25,  credits: 700,  perks: ["700 credits / month", "Unlimited stories & chapters", "Translation (12 languages)", "Character voices"] },
+  { id: "studio",     name: "Studio",     priceUsd: 50,  credits: 1600, perks: ["1,600 credits / month", "Everything in Pro", "LoRA character training", "Priority generation"], highlight: true },
+  { id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 4000, perks: ["4,000 credits / month", "Full access — every feature", "Best for full-time creators", "Top up anytime for more"] },
+];
+export const TOPUP_PACKS = [
+  { id: "small",  name: "300 credits",    credits: 300,   priceUsd: 5 },
+  { id: "medium", name: "1,000 credits",  credits: 1000,  priceUsd: 15 },
+  { id: "large",  name: "3,000 credits",  credits: 3000,  priceUsd: 40 },
+  { id: "xl",     name: "10,000 credits", credits: 10000, priceUsd: 120 },
+];
 export const SEEDS   = [
   // Murim / martial arts
   "A crippled martial artist gains the memories of the murim world's greatest killer",

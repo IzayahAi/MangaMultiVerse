@@ -64,3 +64,37 @@ export const RELEASE_MODE = process.env.RELEASE_MODE === "true";
 export function costFor(action) {
   return COSTS[action] ?? COSTS.misc;
 }
+
+// ── Subscriptions + top-up packs (server-authoritative). Behind RELEASE_MODE. The Stripe price IDs come
+// from env (set per environment in Vercel) so the same code works in test + live. `credits` is the
+// monthly grant for a plan / the one-time grant for a pack. `features` gate what a plan unlocks; the
+// credit `cap` is the real usage limit — over it, users buy a pack. Numbers are tunable config.
+export const PLANS = {
+  free: {
+    id: "free", name: "Free", priceUsd: 0, credits: 100, stripePrice: null,
+    features: { translate: false, voice: false, maxLangs: 1, lora: false, maxStories: 2, fullAccess: false },
+  },
+  pro: {
+    id: "pro", name: "Pro", priceUsd: 25, credits: 700, stripePrice: process.env.STRIPE_PRICE_PRO || null,
+    features: { translate: true, voice: true, maxLangs: 12, lora: false, maxStories: null, fullAccess: false },
+  },
+  studio: {
+    id: "studio", name: "Studio", priceUsd: 50, credits: 1600, stripePrice: process.env.STRIPE_PRICE_STUDIO || null,
+    features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, fullAccess: false },
+  },
+  studio_pro: {
+    id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 4000, stripePrice: process.env.STRIPE_PRICE_STUDIO_PRO || null,
+    features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, fullAccess: true },
+  },
+};
+
+// One-time credit top-ups (never expire). `mode: "payment"` in Stripe Checkout.
+export const PACKS = {
+  small:  { id: "small",  name: "300 credits",    credits: 300,   priceUsd: 5,   stripePrice: process.env.STRIPE_PRICE_PACK_SMALL  || null },
+  medium: { id: "medium", name: "1,000 credits",  credits: 1000,  priceUsd: 15,  stripePrice: process.env.STRIPE_PRICE_PACK_MEDIUM || null },
+  large:  { id: "large",  name: "3,000 credits",  credits: 3000,  priceUsd: 40,  stripePrice: process.env.STRIPE_PRICE_PACK_LARGE  || null },
+  xl:     { id: "xl",     name: "10,000 credits", credits: 10000, priceUsd: 120, stripePrice: process.env.STRIPE_PRICE_PACK_XL     || null },
+};
+
+export const planFor = (id) => PLANS[id] || PLANS.free;
+export const packFor = (id) => PACKS[id] || null;

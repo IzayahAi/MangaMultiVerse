@@ -167,6 +167,31 @@ export async function runMaintenance(check = "selfcheck", token, extra = {}) {
   }
 }
 
+// ── Billing: start a Stripe Checkout for a plan (subscription) or a pack (one-time), or open the billing
+// portal. Each returns a URL to redirect to, or { error }. The server grants credits via the webhook.
+export async function startCheckout(kind, id, token) {
+  try {
+    const r = await fetch("/api/stripe-checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ kind, id }),
+    });
+    const data = await r.json().catch(() => ({}));
+    return r.ok ? data : { error: data.error || `HTTP ${r.status}` };
+  } catch (e) { return { error: e.message }; }
+}
+
+export async function openBillingPortal(token) {
+  try {
+    const r = await fetch("/api/stripe-portal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    const data = await r.json().catch(() => ({}));
+    return r.ok ? data : { error: data.error || `HTTP ${r.status}` };
+  } catch (e) { return { error: e.message }; }
+}
+
 // ── Moderation: readers report published stories; admins review + hide/restore (see db/reports.sql).
 export async function submitReport(storyId, storyTitle, reason, reporterId) {
   if (DEMO || !storyId) return false;
@@ -364,7 +389,7 @@ export async function signIn(email, password) {
   if (!authUser?.id) throw new Error("No user returned — please try again");
   let profile = {};
   try { const rows = await sb.get("profiles", `?id=eq.${authUser.id}`, token); profile = rows[0] || {}; } catch(e){ console.warn("profile fetch:", e); }
-  return { user:{ id:authUser.id, email, username:profile.username||email.split("@")[0], role:profile.role||"creator", credits:profile.credits ?? DEMO_CREDITS }, token, refreshToken: refreshTok };
+  return { user:{ id:authUser.id, email, username:profile.username||email.split("@")[0], role:profile.role||"creator", credits:profile.credits ?? DEMO_CREDITS, plan:profile.plan||"free", planStatus:profile.plan_status||null }, token, refreshToken: refreshTok };
 }
 
 const lsKey = (uid) => `mv2_stories_${uid}`;

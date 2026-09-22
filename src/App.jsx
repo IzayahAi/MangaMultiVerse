@@ -12,6 +12,7 @@ import CreatorDashboard from "./components/CreatorDashboard.jsx";
 import MangaReader from "./components/MangaReader.jsx";
 import AdminDashboard from "./components/AdminDashboard.jsx";
 import AgentsPage from "./components/AgentsPage.jsx";
+import PricingPage from "./components/PricingPage.jsx";
 
 export default function MangaMultiVerse() {
   const C = useTheme();
@@ -206,6 +207,7 @@ export default function MangaMultiVerse() {
     {id:"library",label:t("nav.library")},
     {id:"studio",label:t("nav.studio")},
     {id:"creator",label:t("nav.creator")},
+    ...((RELEASE_MODE || auth?.user?.role==="admin") ? [{id:"pricing",label:"Pricing"}] : []),
     ...(auth?.user?.role==="admin" ? [{id:"agents",label:"✦ Agents"}] : []),
     ...(auth?.user ? [{id:"dashboard",label:"⬡ Dashboard"}] : []),
   ];
@@ -626,6 +628,7 @@ export default function MangaMultiVerse() {
 
         {page==="dashboard"&&auth?.user&&<AdminDashboard auth={auth} published={published} db={db} onOpenStory={onEditStory} onModerated={refreshPublic}/>}
         {page==="agents"&&auth?.user?.role==="admin"&&<AgentsPage/>}
+        {page==="pricing"&&<PricingPage auth={auth} onRequestAuth={()=>setShowAuth(true)}/>}
 
         {page==="creator"&&(
           <CreatorDashboard
