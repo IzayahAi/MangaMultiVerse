@@ -62,7 +62,7 @@ export const DEMO_MAX_CHAPTERS = 3;
 export const PLAN_TIERS = [
   { id: "pro",        name: "Pro",        priceUsd: 15,  credits: 8000,   perks: ["8,000 credits / month", "Unlimited stories & chapters", "Translation (12 languages)", "Character voices", "Ad-free reading"] },
   { id: "studio",     name: "Studio",     priceUsd: 30,  credits: 16000,  perks: ["16,000 credits / month", "Everything in Pro", "LoRA character training", "Priority generation"], highlight: true },
-  { id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 100000, interval: "year", perks: ["100,000 credits for a full year", "Full access — every feature", "Best value — one year, one price", "Top up anytime for more"] },
+  { id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 60000, interval: "year", perks: ["60,000 credits for a full year", "Full access — every feature", "Best value — one year, one price", "Top up anytime for more"] },
 ];
 export const TOPUP_PACKS = [
   { id: "small",  name: "300 credits",    credits: 300,   priceUsd: 5 },

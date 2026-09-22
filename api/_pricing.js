@@ -86,7 +86,7 @@ export const PLANS = {
   },
   studio_pro: {
     // Annual plan — the value/commitment deal. The webhook grants `credits` once per billing cycle (yearly).
-    id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 100000, interval: "year", stripePrice: process.env.STRIPE_PRICE_STUDIO_PRO || null,
+    id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 60000, interval: "year", stripePrice: process.env.STRIPE_PRICE_STUDIO_PRO || null,
     features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, fullAccess: true },
   },
 };
