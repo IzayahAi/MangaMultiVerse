@@ -680,16 +680,9 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     if (succeeded < panels.length) {
       setToast({ msg: `Generated ${succeeded}/${panels.length} panels — the image service dropped a few. Use ↻ Redo on any blanks, or regenerate later.`, type: "warn" });
     }
-    // Persist images so the reader can show them after a refresh
-    if (story?.id) {
-      setPanelImages(current => {
-        try {
-          const json = JSON.stringify(current);
-          if (json.length < 10 * 1024 * 1024) localStorage.setItem(`mv_panels_${story.id}`, json);
-        } catch {}
-        return current;
-      });
-    }
+    // Persist images so the reader can show them after a refresh — cloud AND local, immediately.
+    const sid = editingId || story?.id;
+    if (sid) setPanelImages(current => { persistPanels(sid, current); return current; });
   };
 
   const fetchTrending = async () => {
@@ -823,13 +816,25 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     Object.entries(panelImages).filter(([, v]) => typeof v === "string" && v.startsWith("http"))
   );
 
-  // Persist generated panel images under a story id so the reader can show them later
+  // Persist generated panel images under a story id so the reader can show them later — locally
+  // immediately, AND to the cloud (fire-and-forget), so art isn't lost if the creator navigates away
+  // before the 5s autoSave debounce fires. Chapter scripts had this exact bug (see genChapter's
+  // "persist IMMEDIATELY" comment) — this closes the same gap for panel art. Skips the cloud push for
+  // Ch.1 of an already-published story, same rule autoSave follows (needs an explicit Update-live).
   const persistPanels = (id, images = panelImages) => {
     if (!id || !Object.keys(images).length) return;
     try {
       const json = JSON.stringify(images);
       if (json.length < 10 * 1024 * 1024) localStorage.setItem(`mv_panels_${id}`, json);
     } catch {}
+    const pub = Object.fromEntries(Object.entries(images).filter(([, v]) => typeof v === "string" && v.startsWith("http")));
+    if (!Object.keys(pub).length) return;
+    const commonFields = { thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: pub };
+    if (chapterNum > 1) {
+      onSaveChapter?.(id, chapterNum, { ...script, ...commonFields }, "draft")?.catch?.(() => {});
+    } else if (editStatus !== "published") {
+      onSave?.({ ...story, id, script: script ? { ...script, ...commonFields } : script, character_brief: cb, cover_art: coverArt, voices, status: "draft", author_name: user?.username || story?.author_name || "Anonymous" })?.catch?.(() => {});
+    }
   };
 
   // Reopen a saved draft to keep working on it — restores script, character, cover, voices,
