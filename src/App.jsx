@@ -14,6 +14,8 @@ import AdminDashboard from "./components/AdminDashboard.jsx";
 import AgentsPage from "./components/AgentsPage.jsx";
 import PricingPage from "./components/PricingPage.jsx";
 import AgeGate from "./components/AgeGate.jsx";
+import LegalPage from "./components/LegalPage.jsx";
+import { SUPPORT_EMAIL } from "./constants.js";
 
 export default function MangaMultiVerse() {
   const C = useTheme();
@@ -42,6 +44,7 @@ export default function MangaMultiVerse() {
   const [sel,setSel]         = useState(null);
   const [reading,setReading] = useState(null);
   const [ageOk,setAgeOk]     = useState(isAgeVerified()); // 18+ confirmed for Mature content
+  const [legalDoc,setLegalDoc] = useState("terms"); // which policy the Legal page shows
   const [toast,setToast]     = useState(null);
 
   const db = useDB(auth?.token, auth?.user?.id);
@@ -209,6 +212,7 @@ export default function MangaMultiVerse() {
   ];
 
   const go = id => { setPage(id); setSel(null); setReading(null); try { localStorage.setItem("mv_page", id); } catch {} };
+  const goLegal = doc => { setLegalDoc(doc); go("legal"); window.scrollTo(0, 0); };
 
   // Load an existing story back into the Studio to edit (same record — no duplicate on save)
   const onEditStory = (s) => { setEditStory({...s, _loadedAt: Date.now()}); setSel(null); setReading(null); setPage("studio"); try { localStorage.setItem("mv_page","studio"); } catch {} };
@@ -628,6 +632,7 @@ export default function MangaMultiVerse() {
         {page==="dashboard"&&auth?.user&&<AdminDashboard auth={auth} published={published} db={db} onOpenStory={onEditStory} onModerated={refreshPublic}/>}
         {page==="agents"&&auth?.user?.role==="admin"&&<AgentsPage/>}
         {page==="pricing"&&<PricingPage auth={auth} onRequestAuth={()=>setShowAuth(true)}/>}
+        {page==="legal"&&<LegalPage doc={legalDoc} onDoc={setLegalDoc}/>}
 
         {page==="creator"&&(
           <CreatorDashboard
@@ -646,8 +651,14 @@ export default function MangaMultiVerse() {
         )}
       </div>
 
-      <div style={{borderTop:`0.5px solid ${C.border}`,marginTop:48,padding:"14px 20px",textAlign:"center",fontSize:11,color:C.muted}}>
-        MangaMultiVerse · Read, create, and share stories in every language · Private beta
+      <div style={{borderTop:`0.5px solid ${C.border}`,marginTop:48,padding:"18px 20px 26px",textAlign:"center",fontSize:11,color:C.muted}}>
+        <div style={{display:"flex",gap:14,justifyContent:"center",flexWrap:"wrap",marginBottom:8}}>
+          <button onClick={()=>goLegal("terms")} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit",padding:0}}>Terms</button>
+          <button onClick={()=>goLegal("privacy")} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit",padding:0}}>Privacy</button>
+          <button onClick={()=>goLegal("content")} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit",padding:0}}>Content Policy</button>
+          <a href={`mailto:${SUPPORT_EMAIL}`} style={{color:C.muted,textDecoration:"none",fontSize:11}}>Contact</a>
+        </div>
+        MangaMultiVerse · Read, create, and share stories in every language · Beta
       </div>
     </div>
   );

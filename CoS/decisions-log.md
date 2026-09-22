@@ -4,6 +4,16 @@ _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
 ## 2026-09-22
 
+- **Chose a free PUBLIC-demo launch (no billing) + shipped the legal surface it needed.** Founder wants to
+  open the app to the public as a free demo with the gate **OFF** (`RELEASE_MODE` off, Together image
+  fallback, no Stripe). Reconciled launch-readiness against the live backend — several docs were stale:
+  ✅ `spend_credits` armed, ✅ per-IP cap (`bump_demo_usage` RPC) enforcing, ✅ `content_rating` run,
+  ✅ `cos_daily_logs` RLS fixed, ✅ SEO (robots/sitemap/OG) live with real stories, ✅ credit-grant hole
+  closed via `signup_trigger`. The one real code gap for a *public* launch was the missing legal/policy
+  surface — built it: `src/components/LegalPage.jsx` (Terms / Privacy / Content Policy), a `SUPPORT_EMAIL`
+  constant, footer policy links, and a `legal` route in `App.jsx`. Verified rendering + tab-switch in
+  preview; prod build clean. **Left in the working tree — not committed/deployed** (founder commits). — Mr. K
+
 - **Pricing model finalized + made real.** Demo grant → 500, and now a TRUE one-time per-account
   allotment: credits deplete server-side in demo too (via `spend_credits`, which the founder armed along
   with the 500 signup trigger), no daily reset. Free tier → read-only (read + be on the site,
