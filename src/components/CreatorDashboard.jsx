@@ -266,7 +266,7 @@ const CreatorDashboard = ({ auth, db, published, onShowAuth, onGoStudio, onViewS
                 <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
                   {(uploadParsed.genre_tags||[]).map(g=><Tag key={g} c={C.purple}>{g}</Tag>)}
                   <Tag c={uploadParsed.content_warning==="none"?C.teal:C.gold}>
-                    {uploadParsed.content_warning==="none"?"All ages":uploadParsed.content_warning}
+                    {uploadParsed.content_warning==="none"?"No content warnings":uploadParsed.content_warning}
                   </Tag>
                 </div>
                 {uploadParsed.characters?.length>0&&(
