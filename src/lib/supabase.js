@@ -2,11 +2,12 @@
 import { DEMO_CREDITS } from "../constants.js";
 
 // The Supabase URL + anon key are PUBLIC by design (they ship in the browser bundle; data is protected by
-// RLS, not by hiding these). Hardcoded here as fallbacks so the app works even if the Vercel VITE_ env var
-// isn't exposed to the client build — env vars still override when present. Project: kkpzbfhnpvhnykxitnon.
-const SB_URL = import.meta.env.VITE_SUPABASE_URL || "https://kkpzbfhnpvhnykxitnon.supabase.co";
-const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtrcHpiZmhucHZobnlreGl0bm9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5ODUxMDYsImV4cCI6MjA5MDU2MTEwNn0.d81OUBcuN5DPinR1pL2I3xoMNRHwM_uYE0J2RKhk1jo";
-export const DEMO = SB_URL.includes("your-project");
+// RLS, not by hiding these). Hardcoded DIRECTLY (not env-overridable) because a stale Vercel
+// VITE_SUPABASE_ANON_KEY pointing at the wrong project kept overriding it. Project: kkpzbfhnpvhnykxitnon.
+// To change projects, edit these two lines (they're public values, safe to commit).
+const SB_URL = "https://kkpzbfhnpvhnykxitnon.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtrcHpiZmhucHZobnlreGl0bm9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5ODUxMDYsImV4cCI6MjA5MDU2MTEwNn0.d81OUBcuN5DPinR1pL2I3xoMNRHwM_uYE0J2RKhk1jo";
+export const DEMO = false;
 
 // ── Live session so any request can self-refresh a lapsed token and retry once ──
 let _refreshTok = null;         // current refresh token
