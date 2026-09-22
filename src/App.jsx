@@ -209,10 +209,10 @@ export default function MangaMultiVerse() {
     {id:"library",label:t("nav.library")},
     {id:"studio",label:t("nav.studio")},
     {id:"creator",label:t("nav.creator")},
-    // Subscription + Dashboard are off for everyone (including admin) until RELEASE_MODE launch.
-    ...(RELEASE_MODE ? [{id:"pricing",label:"Subscription"}] : []),
+    // Subscription + Dashboard are hidden from the public demo — admin-only until RELEASE_MODE launch.
+    ...((RELEASE_MODE || auth?.user?.role==="admin") ? [{id:"pricing",label:"Subscription"}] : []),
     ...(auth?.user?.role==="admin" ? [{id:"agents",label:"✦ Agents"}] : []),
-    ...(RELEASE_MODE && auth?.user ? [{id:"dashboard",label:"⬡ Dashboard"}] : []),
+    ...((RELEASE_MODE ? auth?.user : auth?.user?.role==="admin") ? [{id:"dashboard",label:"⬡ Dashboard"}] : []),
   ];
 
   const go = id => { setPage(id); setSel(null); setReading(null); try { localStorage.setItem("mv_page", id); } catch {} };
@@ -639,9 +639,9 @@ export default function MangaMultiVerse() {
 
         {page==="studio"&&<Studio user={auth?.user} credits={auth?.user?.credits} onUseCredits={onUseCredits} drafts={db.stories.filter(s=>s.status==="draft")} myStoryCount={db.stories.length} onSave={onSaveStory} onSaveTranslations={async (storyId, map)=>{ for (const [lang,data] of Object.entries(map||{})) await saveTranslation(storyId, lang, data, auth?.token); }} onSaveChapter={async (storyId, number, script, status)=>saveChapter(storyId, number, script, status, auth?.token)} onDeleteChapter={async (storyId, number)=>deleteChapter(storyId, number, auth?.token)} onSaveBible={async (storyId, data, prefs)=>saveBible(storyId, data, prefs, auth?.token)} onRequestAuth={()=>setShowAuth(true)} editStory={editStory} onEditConsumed={()=>setEditStory(null)} onPublished={()=>{ refreshPublic(); setDashTab("feed"); go("home"); }}/>}
 
-        {page==="dashboard"&&RELEASE_MODE&&auth?.user&&<AdminDashboard auth={auth} published={published} db={db} onOpenStory={onEditStory} onModerated={refreshPublic}/>}
+        {page==="dashboard"&&(RELEASE_MODE?auth?.user:auth?.user?.role==="admin")&&<AdminDashboard auth={auth} published={published} db={db} onOpenStory={onEditStory} onModerated={refreshPublic}/>}
         {page==="agents"&&auth?.user?.role==="admin"&&<AgentsPage/>}
-        {page==="pricing"&&RELEASE_MODE&&<PricingPage auth={auth} onRequestAuth={()=>setShowAuth(true)}/>}
+        {page==="pricing"&&(RELEASE_MODE||auth?.user?.role==="admin")&&<PricingPage auth={auth} onRequestAuth={()=>setShowAuth(true)}/>}
         {page==="legal"&&<LegalPage doc={legalDoc} onDoc={setLegalDoc}/>}
 
         {page==="creator"&&(
