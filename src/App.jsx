@@ -209,7 +209,7 @@ export default function MangaMultiVerse() {
     {id:"library",label:t("nav.library")},
     {id:"studio",label:t("nav.studio")},
     {id:"creator",label:t("nav.creator")},
-    ...((RELEASE_MODE || auth?.user?.role==="admin") ? [{id:"pricing",label:"Subscription"}] : []),
+    {id:"pricing",label:"Subscription"},
     ...(auth?.user?.role==="admin" ? [{id:"agents",label:"✦ Agents"}] : []),
     ...(auth?.user ? [{id:"dashboard",label:"⬡ Dashboard"}] : []),
   ];

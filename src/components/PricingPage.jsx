@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTheme } from "../ThemeContext.jsx";
-import { PLAN_TIERS, TOPUP_PACKS } from "../constants.js";
+import { PLAN_TIERS, TOPUP_PACKS, RELEASE_MODE } from "../constants.js";
 import { startCheckout, openBillingPortal } from "../lib/supabase.js";
 import { Btn, Spinner, Tag } from "./UI.jsx";
 
@@ -12,6 +12,7 @@ export default function PricingPage({ auth, onRequestAuth }) {
   const [toast, setToast] = useState(null);
   const signedIn = !!(auth?.token && auth.token !== "demo");
   const currentPlan = auth?.user?.plan || "free";
+  const launched = RELEASE_MODE; // billing goes live at launch; until then plans are view-only
 
   const go = async (kind, id) => {
     if (!signedIn) { onRequestAuth?.(); return; }
@@ -29,6 +30,7 @@ export default function PricingPage({ auth, onRequestAuth }) {
       <div style={{ textAlign: "center", marginBottom: 26 }}>
         <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Cinzel',serif", color: C.text }}>Subscription</div>
         <div style={{ fontSize: 13, color: C.muted, marginTop: 6 }}>Create more manga. Cancel anytime. Run out? Top up instantly.</div>
+        {!launched && <div style={{ display: "inline-block", marginTop: 10, padding: "6px 14px", borderRadius: 99, background: `${C.purple}18`, border: `0.5px solid ${C.purple}44`, fontSize: 12, color: C.purpleL }}>✦ Plans go live at launch — here's what's coming.</div>}
         {currentPlan !== "free" && signedIn && (
           <div style={{ marginTop: 12 }}>
             <Tag c={C.teal}>Current plan: {PLAN_TIERS.find((p) => p.id === currentPlan)?.name || currentPlan}</Tag>
@@ -59,8 +61,8 @@ export default function PricingPage({ auth, onRequestAuth }) {
                   <div key={i} style={{ fontSize: 12, color: C.muted, display: "flex", gap: 7 }}><span style={{ color: C.teal }}>✓</span>{perk}</div>
                 ))}
               </div>
-              <Btn v={p.highlight ? "pri" : "soft"} onClick={() => go("subscription", p.id)} disabled={isCurrent || busy === p.id || p.id === "free"} sx={{ justifyContent: "center", fontSize: 13, padding: "10px 0" }}>
-                {isCurrent ? "Current plan" : p.id === "free" ? "Free" : busy === p.id ? <><Spinner size={13} /> …</> : `Choose ${p.name}`}
+              <Btn v={p.highlight ? "pri" : "soft"} onClick={() => go("subscription", p.id)} disabled={!launched || isCurrent || busy === p.id || p.id === "free"} sx={{ justifyContent: "center", fontSize: 13, padding: "10px 0" }}>
+                {!launched ? "Available at launch" : isCurrent ? "Current plan" : p.id === "free" ? "Free" : busy === p.id ? <><Spinner size={13} /> …</> : `Choose ${p.name}`}
               </Btn>
             </div>
           );
@@ -74,8 +76,8 @@ export default function PricingPage({ auth, onRequestAuth }) {
           <div key={p.id} style={{ background: C.surf, border: `0.5px solid ${C.border}`, borderRadius: 12, padding: 16, textAlign: "center" }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{p.name}</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: "6px 0 12px" }}>${p.priceUsd}</div>
-            <Btn v="soft" onClick={() => go("pack", p.id)} disabled={busy === p.id} sx={{ justifyContent: "center", fontSize: 12, padding: "8px 0", width: "100%" }}>
-              {busy === p.id ? <><Spinner size={12} /> …</> : "Buy"}
+            <Btn v="soft" onClick={() => go("pack", p.id)} disabled={!launched || busy === p.id} sx={{ justifyContent: "center", fontSize: 12, padding: "8px 0", width: "100%" }}>
+              {!launched ? "At launch" : busy === p.id ? <><Spinner size={12} /> …</> : "Buy"}
             </Btn>
           </div>
         ))}
