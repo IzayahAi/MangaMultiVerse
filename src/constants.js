@@ -45,14 +45,16 @@ export const RELEASE_MODE = ((typeof import.meta !== "undefined" && import.meta.
 // Cap languages pre-translated in one publish (mirror of api/_pricing.js LIMITS).
 export const MAX_LANGS_PER_PUBLISH = 12;
 // Credit grant for new signups while in demo/beta — generous to seed content. Mirror of api/_pricing.js.
-export const DEMO_CREDITS = 500;
+// Sized to cover the demo cap (3 stories x 3 chapters x 50 panels ~= 513 credits) with headroom for
+// redos/regens. The REAL grant is db/signup_trigger.sql — keep all three in sync.
+export const DEMO_CREDITS = 700;
 // MANGA translation (reader/creator, per-chapter) is ON everywhere now — it's cheap + globally cached via
 // /api/translate (each story×language×chapter paid once, then free for all readers). Separate from the
 // whole-UI auto-translate token sink, which stays RELEASE_MODE-gated in i18n.jsx (launch-only).
 export const TRANSLATION_ENABLED = true;
 // Demo caps (unlimited at launch): up to DEMO_MAX_STORIES separate manga, each up to DEMO_MAX_CHAPTERS
 // chapters. Depth over breadth — fewer stories, more chapters each.
-export const DEMO_MAX_STORIES = 2;
+export const DEMO_MAX_STORIES = 3;
 export const DEMO_MAX_CHAPTERS = 3;
 
 // Pricing display (client mirror of api/_pricing.js PLANS/PACKS — display only, no Stripe IDs/secrets).

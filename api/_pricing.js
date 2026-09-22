@@ -55,7 +55,7 @@ export const DEMO_LIMITS = { imagesPerDay: 300, textPerDay: 100 };
 
 // Credit grant for NEW signups while in demo/beta — generous to seed content. Mirror: constants.js.
 // (At launch, Free is read-only: revisit the signup-trigger grant in db/signup_trigger.sql.)
-export const DEMO_CREDITS = 500;
+export const DEMO_CREDITS = 700;
 
 // The launch gate. OFF (default) = demo/beta: keys are still server-side (the security win is always
 // on), but auth + credit charging are skipped so the current experience is unchanged. ON = release:
