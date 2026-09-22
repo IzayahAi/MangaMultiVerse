@@ -561,7 +561,7 @@ export default function AgentsPage() {
           <div style={{fontSize:11,color:C.purple,textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:500}}>Admin Agents</div>
         </div>
         <div style={{fontSize:22,fontWeight:700,fontFamily:"'Cinzel',serif",color:C.text}}>The Factory Floor</div>
-        <div style={{fontSize:13,color:C.muted,marginTop:4}}>Every station in the manga pipeline, runnable on its own</div>
+        <div style={{fontSize:13,color:C.muted,marginTop:4}}>The whole operation on one map — the production line (runnable stations), the control room, and the maintenance wing</div>
       </div>
 
       <FactoryMap active={active} onPick={setActive}/>
