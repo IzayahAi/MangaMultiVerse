@@ -77,17 +77,19 @@ export const PLANS = {
     features: { translate: false, voice: false, maxLangs: 1, lora: false, maxStories: 0, fullAccess: false },
   },
   pro: {
+    // Limited entry tier: standard (Lightning) art, no LoRA.
     id: "pro", name: "Pro", priceUsd: 15, credits: 5000, interval: "month", stripePrice: process.env.STRIPE_PRICE_PRO || null,
-    features: { translate: true, voice: true, maxLangs: 12, lora: false, maxStories: null, premiumArt: true, fullAccess: false },
+    features: { translate: true, voice: true, maxLangs: 12, lora: false, maxStories: null, premiumArt: false, fullAccess: false },
   },
   studio: {
-    id: "studio", name: "Studio", priceUsd: 30, credits: 10000, interval: "month", stripePrice: process.env.STRIPE_PRICE_STUDIO || null,
-    features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, premiumArt: true, fullAccess: false },
+    // Everything EXCEPT premium art: all features + LoRA + high credit volume, on standard (Lightning) art.
+    id: "studio", name: "Studio", priceUsd: 30, credits: 16000, interval: "month", stripePrice: process.env.STRIPE_PRICE_STUDIO || null,
+    features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, premiumArt: false, fullAccess: false },
   },
   studio_pro: {
-    // Annual plan — the premium tier. Its real differentiator is `premiumArt`: panels render on Juggernaut
-    // Pro Flux (see api/image.js) instead of the fast Lightning model. The webhook grants `credits` yearly.
-    id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 60000, interval: "year", stripePrice: process.env.STRIPE_PRICE_STUDIO_PRO || null,
+    // The premium tier — its hook is `premiumArt`: panels render on Juggernaut Pro Flux (best quality), traded
+    // for fewer credits than Studio. Annual; the webhook grants `credits` once per year.
+    id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 35000, interval: "year", stripePrice: process.env.STRIPE_PRICE_STUDIO_PRO || null,
     features: { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, premiumArt: true, fullAccess: true },
   },
 };
