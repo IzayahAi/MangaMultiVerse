@@ -464,7 +464,7 @@ export function useDB(token, userId) {
 
   useEffect(() => { load(); }, [load]);
 
-  const DB_COLS = new Set(["id","author_id","author_name","title","tagline","logline","genre_tags","origin","status","cover_color","emoji","chapters","rating","views","langs","protagonist","antagonist","setting","script","character_brief","themes","central_conflict","chapter_one_hook","visual_style_notes","story_arc","comparable_works","created_at","updated_at"]);
+  const DB_COLS = new Set(["id","author_id","author_name","title","tagline","logline","genre_tags","origin","status","cover_color","emoji","chapters","rating","views","langs","protagonist","antagonist","setting","script","character_brief","themes","central_conflict","chapter_one_hook","visual_style_notes","story_arc","comparable_works","content_rating","created_at","updated_at"]);
   const sanitize = (obj) => Object.fromEntries(Object.entries(obj).filter(([k]) => DB_COLS.has(k)));
 
   const upsert = useCallback(async (raw) => {

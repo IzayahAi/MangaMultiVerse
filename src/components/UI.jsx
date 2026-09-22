@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { STATUS_COLOR, STATUS_DOT, rndCover } from "../constants.js";
+import { STATUS_COLOR, STATUS_DOT, rndCover, isAgeVerified } from "../constants.js";
 import { useTheme } from "../ThemeContext.jsx";
 
 export const Tag = ({c, children, sx={}}) => {
@@ -62,18 +62,26 @@ export const Toast = ({msg,type="ok",onDone}) => {
 export const CoverCard = ({item,onClick,aiMade}) => {
   const C = useTheme();
   const statusColor = {ongoing:C.teal, completed:C.blue, hiatus:C.gold, published:C.teal};
+  const mature = item.content_rating === "mature";
+  const gated = mature && !isAgeVerified(); // blur the art for unverified viewers (kids)
   return (
     <div onClick={onClick} style={{cursor:"pointer",borderRadius:12,overflow:"hidden",border:`0.5px solid ${C.border}`,background:C.card,transition:"transform .2s,box-shadow .2s",position:"relative"}}
       onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-4px)";e.currentTarget.style.boxShadow=`0 12px 32px rgba(0,0,0,0.15)`;e.currentTarget.style.borderColor=C.border2;}}
       onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";e.currentTarget.style.borderColor=C.border;}}>
-      <div style={{height:150,background:`linear-gradient(160deg, ${item.cover_color||rndCover()}, ${item.cover_color||rndCover()}99)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:52,position:"relative",overflow:"hidden"}}>
+      <div style={{height:150,background:`linear-gradient(160deg, ${item.cover_color||rndCover()}, ${item.cover_color||rndCover()}99)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:52,position:"relative",overflow:"hidden",filter:gated?"blur(14px)":"none"}}>
         <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.7))"}}/>
         {item.emoji||"📖"}
         {aiMade && <div style={{position:"absolute",top:8,left:8,zIndex:1}}><Tag c={C.purple}>✦ AI</Tag></div>}
-        <div style={{position:"absolute",bottom:8,left:10,right:10,zIndex:1}}>
+        {!gated && <div style={{position:"absolute",bottom:8,left:10,right:10,zIndex:1}}>
           <div style={{fontSize:12,fontWeight:600,color:"#fff",lineHeight:1.3,textShadow:"0 1px 4px rgba(0,0,0,0.8)",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{item.title}</div>
-        </div>
+        </div>}
       </div>
+      {mature && <div style={{position:"absolute",top:8,right:8,zIndex:2,fontSize:9,fontWeight:700,color:"#fff",background:"#e24b4a",padding:"2px 6px",borderRadius:5,letterSpacing:"0.03em"}}>18+</div>}
+      {gated && <div style={{position:"absolute",top:0,left:0,right:0,height:150,zIndex:2,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:"#fff",pointerEvents:"none"}}>
+        <div style={{fontSize:24}}>🔞</div>
+        <div style={{fontSize:11,fontWeight:600}}>Mature · 18+</div>
+        <div style={{fontSize:9,opacity:0.8}}>Confirm your age to view</div>
+      </div>}
       <div style={{padding:"8px 10px"}}>
         <div style={{fontSize:10,color:C.muted,marginBottom:5}}>{item.author_name||item.author||"—"}</div>
         <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>{(item.genre_tags||[]).slice(0,2).map(g=><Tag key={g} c={C.dim} sx={{color:C.muted,fontSize:9}}>{g}</Tag>)}</div>

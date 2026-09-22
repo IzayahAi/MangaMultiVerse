@@ -5,7 +5,7 @@ import { useI18n } from "./lib/i18n.jsx";
 import { DEMO, useDB, signIn, registerSession, ensureFreshToken, spendCredits, fetchPublishedStories, saveTranslation, saveChapter, deleteChapter, saveBible, logError } from "./lib/supabase.js";
 import { setApiToken } from "./lib/claude.js";
 import { Tag, Btn, Toast, CoverCard } from "./components/UI.jsx";
-import { STATUS_COLOR, STATUS_DOT, RELEASE_MODE } from "./constants.js";
+import { STATUS_COLOR, STATUS_DOT, RELEASE_MODE, isAgeVerified } from "./constants.js";
 import AuthModal from "./components/AuthModal.jsx";
 import Studio from "./components/Studio.jsx";
 import CreatorDashboard from "./components/CreatorDashboard.jsx";
@@ -13,6 +13,7 @@ import MangaReader from "./components/MangaReader.jsx";
 import AdminDashboard from "./components/AdminDashboard.jsx";
 import AgentsPage from "./components/AgentsPage.jsx";
 import PricingPage from "./components/PricingPage.jsx";
+import AgeGate from "./components/AgeGate.jsx";
 
 export default function MangaMultiVerse() {
   const C = useTheme();
@@ -40,6 +41,7 @@ export default function MangaMultiVerse() {
   const [q,setQ]             = useState("");
   const [sel,setSel]         = useState(null);
   const [reading,setReading] = useState(null);
+  const [ageOk,setAgeOk]     = useState(isAgeVerified()); // 18+ confirmed for Mature content
   const [toast,setToast]     = useState(null);
 
   const db = useDB(auth?.token, auth?.user?.id);
@@ -614,7 +616,10 @@ export default function MangaMultiVerse() {
           </div>
         )}
 
-        {reading&&(
+        {reading && reading.content_rating==="mature" && !ageOk && (
+          <AgeGate onVerified={()=>setAgeOk(true)} onCancel={()=>{setReading(null);setSel(reading);}}/>
+        )}
+        {reading && !(reading.content_rating==="mature" && !ageOk) && (
           <MangaReader story={reading} onBack={()=>{setReading(null);setSel(reading);}} signedIn={!!(auth?.token && auth.token!=="demo")} reporterId={auth?.user?.id} user={auth?.user}/>
         )}
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LANG_GROUPS, RECOMMENDED_LANGS, rndCover, TRANSLATION_ENABLED } from "../constants.js";
+import { LANG_GROUPS, RECOMMENDED_LANGS, rndCover, TRANSLATION_ENABLED, CONTENT_RATINGS } from "../constants.js";
 import { fetchTranslatedLangs } from "../lib/supabase.js";
 import { Tag, Btn, Spinner } from "./UI.jsx";
 import { useTheme } from "../ThemeContext.jsx";
@@ -7,6 +7,7 @@ import { useTheme } from "../ThemeContext.jsx";
 export default function PublishModal({story, onPublish, onClose, saving, progress, canTranslate = TRANSLATION_ENABLED, maxLangs = 999}) {
   const C = useTheme();
   const [autoLangs,setAuto] = useState(["Spanish","French","German","Portuguese"]);
+  const [rating,setRating] = useState(story?.content_rating || "all");
   const [storedLangs,setStoredLangs] = useState([]); // already translated → pre-selected + marked ✓
   const tog = l => setAuto(p => p.includes(l)?p.filter(x=>x!==l):[...p,l]);
   const ALL_LANGS = LANG_GROUPS.flatMap(g=>g.langs).filter(l=>l!=="English");
@@ -44,6 +45,19 @@ export default function PublishModal({story, onPublish, onClose, saving, progres
           <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Checklist</div>
           {checks.map(([done,label],i)=><div key={i} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 0",borderBottom:`0.5px solid ${C.border}`,fontSize:12}}><span style={{fontSize:14,color:done?C.teal:C.muted}}>{done?"✓":"○"}</span><span style={{color:done?C.text:C.muted,flex:1}}>{label}</span>{!done&&<Tag c={C.gold}>Optional</Tag>}</div>)}
         </div>
+
+        <div style={{marginBottom:18}}>
+          <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Content rating</div>
+          <div style={{display:"flex",gap:8}}>
+            {CONTENT_RATINGS.map(r=>(
+              <button key={r.id} onClick={()=>setRating(r.id)} style={{flex:1,padding:"9px 6px",borderRadius:9,border:`0.5px solid ${rating===r.id?r.color:C.border}`,background:rating===r.id?r.color+"22":C.card,color:rating===r.id?C.text:C.muted,cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:rating===r.id?600:400}}>
+                <span style={{color:r.color,fontWeight:700,marginRight:5}}>{r.badge}</span>{r.label}
+              </button>
+            ))}
+          </div>
+          {rating==="mature" && <div style={{fontSize:10.5,color:C.muted,marginTop:6}}>Mature stories are hidden behind an 18+ age gate. Mature = dark/suggestive themes only — no explicit content.</div>}
+        </div>
+
         {canTranslate ? (
         <div style={{marginBottom:20}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
@@ -81,7 +95,7 @@ export default function PublishModal({story, onPublish, onClose, saving, progres
         {saving && progress && <div style={{fontSize:12,color:C.purpleL,marginBottom:12,textAlign:"center"}}>{progress}</div>}
         <div style={{display:"flex",gap:10}}>
           <Btn onClick={onClose} sx={{flex:1}} disabled={saving}>Cancel</Btn>
-          <Btn v="pri" onClick={()=>onPublish(canTranslate?autoLangs.slice(0,maxLangs):[])} disabled={saving} sx={{flex:2,justifyContent:"center"}}>{saving?<><Spinner size={13}/>{progress?"Translating…":"Publishing…"}</>:"✦ Publish to library →"}</Btn>
+          <Btn v="pri" onClick={()=>onPublish(canTranslate?autoLangs.slice(0,maxLangs):[], rating)} disabled={saving} sx={{flex:2,justifyContent:"center"}}>{saving?<><Spinner size={13}/>{progress?"Translating…":"Publishing…"}</>:"✦ Publish to library →"}</Btn>
         </div>
       </div>
     </div>

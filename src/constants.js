@@ -78,6 +78,23 @@ export function featuresFor(user) {
   return PLAN_FEATURES[user?.plan || "free"] || PLAN_FEATURES.free;
 }
 
+// Content maturity ratings (per story). Mature is age-gated (18+); mature = dark/suggestive themes, NOT
+// explicit — the AI providers don't generate explicit content. Stored in stories.content_rating.
+export const CONTENT_RATINGS = [
+  { id: "all",    label: "All ages", badge: "A",   color: "#3fb950" },
+  { id: "teen",   label: "Teen",     badge: "T",   color: "#d29922" },
+  { id: "mature", label: "Mature",   badge: "18+", color: "#e24b4a" },
+];
+export const ratingOf = (id) => CONTENT_RATINGS.find((r) => r.id === id) || CONTENT_RATINGS[0];
+
+// Age verification (self-attested, for mature THEMES — not explicit). Persisted per browser.
+export function isAgeVerified() {
+  try { return localStorage.getItem("mv_age_verified") === "1"; } catch { return false; }
+}
+export function setAgeVerified(v) {
+  try { if (v) localStorage.setItem("mv_age_verified", "1"); else localStorage.removeItem("mv_age_verified"); } catch {}
+}
+
 // Ad gate: show a short interstitial every AD_EVERY_CHAPTERS chapter-opens for non-paying viewers (paid =
 // ad-free). AD_SECONDS is how long before "Continue" unlocks. Ads run only at launch (RELEASE_MODE).
 export const AD_EVERY_CHAPTERS = 6;

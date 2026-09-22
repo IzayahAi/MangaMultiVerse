@@ -944,7 +944,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     return out;
   };
 
-  const publish = async (langs) => {
+  const publish = async (langs, rating = "all") => {
     // Don't let a chapter ship with panels but no hosted art — readers would see blanks.
     if (script?.panels?.length && !Object.keys(publicPanelImages()).length &&
         !window.confirm("This chapter has no saved panel art yet, so readers on other devices will see empty panels.\n\nGenerate panels first for the full experience — publish anyway?")) return;
@@ -958,7 +958,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     setPub(true);
     try {
       const translations = await pregenerateTranslations(langs);
-      const saved = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: publicPanelImages()} : script, character_brief:cb, cover_art:coverArt, voices, status:"published", author_name:user?.username||"Anonymous", langs:1+langs.length, published_at:new Date().toISOString()});
+      const saved = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: publicPanelImages()} : script, character_brief:cb, cover_art:coverArt, voices, status:"published", content_rating:rating, author_name:user?.username||"Anonymous", langs:1+langs.length, published_at:new Date().toISOString()});
       // Store translations in their OWN table (keyed by the saved story id) — never in the story record.
       if (Object.keys(translations).length) { try { await onSaveTranslations?.(saved.id, translations); } catch(e){ console.warn("save translations:", e.message); } }
       persistPanels(saved?.id);
