@@ -175,10 +175,10 @@ export async function runMaintenance(check = "selfcheck", token, extra = {}) {
 // portal. Each returns a URL to redirect to, or { error }. The server grants credits via the webhook.
 export async function startCheckout(kind, id, token) {
   try {
-    const r = await fetch("/api/stripe-checkout", {
+    const r = await fetch("/api/stripe-billing", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ kind, id }),
+      body: JSON.stringify({ action: "checkout", kind, id }),
     });
     const data = await r.json().catch(() => ({}));
     return r.ok ? data : { error: data.error || `HTTP ${r.status}` };
@@ -187,9 +187,10 @@ export async function startCheckout(kind, id, token) {
 
 export async function openBillingPortal(token) {
   try {
-    const r = await fetch("/api/stripe-portal", {
+    const r = await fetch("/api/stripe-billing", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ action: "portal" }),
     });
     const data = await r.json().catch(() => ({}));
     return r.ok ? data : { error: data.error || `HTTP ${r.status}` };
