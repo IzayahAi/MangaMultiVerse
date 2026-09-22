@@ -8,7 +8,7 @@
 // launch languages should mirror the same keys; anything missing falls back to English then AI.
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { askClaude } from "./claude.js";
-import { TRANSLATION_ENABLED } from "../constants.js";
+import { RELEASE_MODE } from "../constants.js";
 
 // English is the SOURCE OF TRUTH. Every localizable string lives here keyed by a dotted id.
 export const EN = {
@@ -138,7 +138,7 @@ export function I18nProvider({ children }) {
 
   // Fetch/translate the string set for non-English, non-curated languages (cached per device).
   useEffect(() => {
-    if (!TRANSLATION_ENABLED) return; // demo: English-only UI — never spend tokens auto-translating the interface
+    if (!RELEASE_MODE) return; // demo: English-only UI — never spend tokens auto-translating the whole interface (the header language dropdown is also RELEASE_MODE-gated). Manga translation is separate (TRANSLATION_ENABLED).
     if (lang === "English" || CURATED[lang] || aiDict[lang]) return;
     try {
       const cached = JSON.parse(localStorage.getItem(`mv_ui_i18n_${lang}`) || "null");
@@ -162,7 +162,7 @@ export function I18nProvider({ children }) {
 
   // Curated wins, then AI cache, then the English base — so the UI is always fully populated.
   const active = useMemo(
-    () => ((!TRANSLATION_ENABLED || lang === "English") ? EN : { ...EN, ...(aiDict[lang] || {}), ...(CURATED[lang] || {}) }),
+    () => ((!RELEASE_MODE || lang === "English") ? EN : { ...EN, ...(aiDict[lang] || {}), ...(CURATED[lang] || {}) }),
     [lang, aiDict]
   );
   const t = useCallback((key, fallback) => active[key] ?? EN[key] ?? fallback ?? key, [active]);

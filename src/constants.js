@@ -46,8 +46,10 @@ export const RELEASE_MODE = ((typeof import.meta !== "undefined" && import.meta.
 export const MAX_LANGS_PER_PUBLISH = 12;
 // Credit grant for new signups while in demo/beta — generous to seed content. Mirror of api/_pricing.js.
 export const DEMO_CREDITS = 500;
-// Multi-language translation is OFF in demo (English only) to save tokens; it turns on at launch.
-export const TRANSLATION_ENABLED = RELEASE_MODE;
+// MANGA translation (reader/creator, per-chapter) is ON everywhere now — it's cheap + globally cached via
+// /api/translate (each story×language×chapter paid once, then free for all readers). Separate from the
+// whole-UI auto-translate token sink, which stays RELEASE_MODE-gated in i18n.jsx (launch-only).
+export const TRANSLATION_ENABLED = true;
 // Demo caps (unlimited at launch): up to DEMO_MAX_STORIES separate manga, each up to DEMO_MAX_CHAPTERS
 // chapters. Depth over breadth — fewer stories, more chapters each.
 export const DEMO_MAX_STORIES = 2;
