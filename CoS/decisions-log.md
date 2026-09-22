@@ -4,6 +4,24 @@ _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
 ## 2026-09-22
 
+- **Public demo is LIVE (https://mangaverse-deploy.vercel.app), reader path smoke-tested green.** Browse +
+  Curator shelves, story reader with full art, live per-chapter translation (verified Spanish via
+  /api/translate), report button, legal + subscription pages all working on prod. Create-flow (signup →
+  generate → publish) still needs a founder pass (can't test — no credentials). — Mr. K
+
+- **Fixed a long deploy bug: live app was pointed at a PAUSED/wrong Supabase project.** Root cause: two
+  Supabase projects exist — `kkpzbfhnpvhnykxitnon` (active, all the real work + SQL) and
+  `hhjyfwgujmiiariqtaix` (paused, old schema). Prod's Vercel env pointed at the paused one, and its stale
+  `VITE_SUPABASE_ANON_KEY` (old project's key) silently overrode every fix → 401 / empty library. Chased
+  build-cache + service-worker red herrings before the Vercel build log revealed the same commit produced a
+  different bundle on Vercel (old key) vs local (correct key). **Fix: hardcode the correct kkpz URL + anon
+  key DIRECTLY in `src/lib/supabase.js`** (public values, RLS-protected) so no env can override; plus
+  `rm -rf node_modules/.vite` in the build and a `.gitleaks.toml` allowlist for the public anon key. — Mr. K
+
+- **Subscription page opened to everyone (view-only until launch).** Removed the admin/RELEASE_MODE nav gate;
+  buttons show "Available at launch" (disabled) while billing's off, so visitors see the plans without
+  hitting a broken checkout. — Mr. K
+
 - **Pricing reassessed + restructured after the ~20× image-cost drop, then split by art quality.** A
   50-panel chapter now costs ~$0.05 (Juggernaut Lightning, was ~$1 on Fal). After several iterations landed
   on a **quality-vs-quantity ladder** with a real Studio Pro differentiator (premium art):

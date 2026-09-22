@@ -13,7 +13,20 @@ JSON — Mr. K is live in production and the weekly cron is active. Nothing to r
 _Decided 2026-09-22: free public demo, gate stays OFF, Together fallback, no Stripe. Code is done, deployed,
 and verified live this session. Only a couple of founder-side items remain:_
 
-**Remaining:**
+**Demo is LIVE (2026-09-22) — remaining cleanup after the two-project fix:**
+- **Point the SERVER-side Vercel vars at `kkpzbfhnpvhnykxitnon`** — `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
+  `SUPABASE_SERVICE_ROLE_KEY` (the non-`VITE_` ones). The client is hardcoded to kkpz now, but server
+  functions (translation caching via /api/translate persist, the maintenance agents, webhook) still read
+  these; if they point at the old `hhjy` project those features write to the wrong DB.
+- **Founder create-flow smoke test:** signup → create a story → generate a chapter (confirm Juggernaut-ish
+  art) → publish. Reader path is verified; create needs a real login.
+- **Delete the old `hhjyfwgujmiiariqtaix` Supabase project** once nothing needs it (it's paused + stale).
+- **Free-tier Supabase auto-pauses after ~7 days idle** — what just bit us. Steady public traffic prevents
+  it; Supabase Pro ($25/mo) guarantees always-on if a quiet stretch is a risk.
+- **Daily generation cap (10/20/unlimited chapters)** — discussed, NOT built. It adds no cost (monthly
+  credits already cap spend); it's only burst/abuse protection. Build only if abuse shows up.
+
+**Remaining (pre-existing):**
 - **Image providers (decided 2026-09-22): fund Together + add DeepInfra key.** Chain is now Together
   (Juggernaut Lightning Flux) primary → DeepInfra fallback, Fal demoted (~10× cheaper). To activate the
   quality tier: (a) fund the Together account so `Rundiffusion/Juggernaut-Lightning-Flux` serves — unfunded
