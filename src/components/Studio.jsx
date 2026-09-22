@@ -147,6 +147,8 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
   const feat = featuresFor(user);
   // Premium HD audio (ElevenLabs) needs the env kill-switch on AND the user's plan to include voice.
   const voiceOn = HAS_ELEVEN && feat.voice;
+  // Guests get write-your-own only (no seed prompts/suggestions); signed-in creators keep the full tools.
+  const effMode = user ? recMode : "write";
 
   const requireAuth = () => {
     if (user) return true;
@@ -1177,8 +1179,8 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
       {!user && (
         <div onClick={()=>onRequestAuth?.()} role="button" style={{marginBottom:18,padding:"14px 18px",borderRadius:12,border:`0.5px solid ${C.purple}`,background:`linear-gradient(135deg,${C.purple}22,${C.pink}0f)`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
           <div>
-            <div style={{fontSize:14,fontWeight:600,color:C.text}}>✦ Sign in for a free demo</div>
-            <div style={{fontSize:12,color:C.muted,marginTop:2}}>Get 500 free credits to create your first manga — no payment, just yours to keep.</div>
+            <div style={{fontSize:14,fontWeight:600,color:C.text}}>🔒 Sign in to save your story</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:2}}>Creating is free — sign in to generate and keep your manga (500 free demo credits to start).</div>
           </div>
           <span style={{fontSize:13,fontWeight:600,color:"#fff",background:`linear-gradient(135deg,${C.purple},${C.pink})`,padding:"9px 18px",borderRadius:8,whiteSpace:"nowrap"}}>Sign in →</span>
         </div>
@@ -1197,6 +1199,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
         </div>
       </div>
 
+      {user && (
       <div style={{display:"flex",gap:0,marginBottom:12,background:C.card,borderRadius:9,padding:3,border:`0.5px solid ${C.border}`}}>
         {[
           {id:"seeds",    label:"✦ Trending"},
@@ -1209,8 +1212,9 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
           </button>
         ))}
       </div>
+      )}
 
-      {recMode==="seeds"&&(
+      {effMode==="seeds"&&(
         <div style={{marginBottom:14}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
             <div style={{fontSize:11,color:C.muted}}>Fresh ideas for {genre} · {style}</div>
@@ -1256,7 +1260,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
         </div>
       )}
 
-      {recMode==="personal"&&(
+      {effMode==="personal"&&(
         <div style={{marginBottom:14}}>
           {drafts.length===0?(
             <div style={{padding:"20px",textAlign:"center",background:C.card,borderRadius:10,border:`0.5px solid ${C.border}`}}>
@@ -1293,7 +1297,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
         </div>
       )}
 
-      {recMode==="wizard"&&(
+      {effMode==="wizard"&&(
         <div style={{marginBottom:14}}>
           <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Answer 4 questions and AI builds your perfect seed</div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -1341,14 +1345,14 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
         </div>
       )}
 
-      {recMode==="write"&&(
+      {effMode==="write"&&(
         <div style={{background:C.card,border:`0.5px solid ${C.border2}`,borderRadius:12,padding:18,marginBottom:14}}>
           <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Your story idea</div>
           <textarea value={seed} onChange={e=>setSeed(e.target.value)} placeholder="A disgraced knight discovers his sword is haunted by the souls of everyone it has ever killed…" rows={4} style={{width:"100%",background:"transparent",border:"none",outline:"none",color:C.text,fontSize:14,lineHeight:1.7,resize:"none",fontFamily:"'DM Sans',sans-serif"}}/>
         </div>
       )}
 
-      {seed.trim()&&recMode!=="write"&&(
+      {seed.trim()&&effMode!=="write"&&(
         <div style={{padding:"10px 14px",background:C.purple+"12",border:`0.5px solid ${C.purple}44`,borderRadius:9,marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:14}}>✦</span>
           <div style={{flex:1}}>
