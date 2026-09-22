@@ -1,8 +1,9 @@
 ﻿import { useState, useRef, useEffect } from "react";
-import { MOOD_PALETTES, getMood, LANG_GROUPS, RELEASE_MODE, TRANSLATION_ENABLED, featuresFor } from "../constants.js";
+import { MOOD_PALETTES, getMood, LANG_GROUPS, RELEASE_MODE, TRANSLATION_ENABLED, featuresFor, AD_EVERY_CHAPTERS, AD_SECONDS } from "../constants.js";
 import { useTheme } from "../ThemeContext.jsx";
 import { askClaude, P_TRANSLATE, translateChapter } from "../lib/claude.js";
 import { fetchTranslation, fetchChapter, submitReport } from "../lib/supabase.js";
+import AdGate from "./AdGate.jsx";
 import { BUBBLE_FONT, SHOUT_FONT, isBigPanel, onArtBubbles, ThoughtCloud, spreadShots, spreadCellSpan, buildCharIntros, firstAppearances, CharIntroCard, NarrationBox } from "./mangaBubbles.jsx";
 
 // Swap each panel's dialogue text with its translation. Matches by panel number + normalized
@@ -127,6 +128,16 @@ const MangaReader = ({ story, onBack, panelImages, signedIn = false, reporterId 
   const [showNav, setShowNav] = useState(true);
   const [currentChapter, setCurrentChapter] = useState(1);
   const [fontSize, setFontSize] = useState(13);
+
+  // Ad gate: ad-supported free/guest viewers see a short interstitial every AD_EVERY_CHAPTERS chapter-opens
+  // (paid plans are ad-free; ads only run at launch). Counts chapter opens and trips the gate on each Nth.
+  const adsOn = RELEASE_MODE && !featuresFor(user).adFree;
+  const chapterOpens = useRef(0);
+  const [showAd, setShowAd] = useState(false);
+  useEffect(() => {
+    chapterOpens.current += 1;
+    if (adsOn && chapterOpens.current > 1 && (chapterOpens.current - 1) % AD_EVERY_CHAPTERS === 0) setShowAd(true);
+  }, [currentChapter]); // eslint-disable-line react-hooks/exhaustive-deps
   const [translation, setTranslation] = useState(null); // translated chapter for the active non-English lang
   const [translating, setTranslating] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);  // report menu open
@@ -264,6 +275,8 @@ const MangaReader = ({ story, onBack, panelImages, signedIn = false, reporterId 
   return (
     <div ref={containerRef} style={{background:"#000",position:"fixed",inset:0,zIndex:1000,overflowY:"auto",padding:0}}
       onMouseMove={resetNavTimer} onClick={resetNavTimer}>
+
+      {showAd && <AdGate seconds={AD_SECONDS} onDone={()=>setShowAd(false)} />}
 
       <div style={{position:"fixed",top:0,left:0,right:0,zIndex:100,transition:"opacity .3s",opacity:showNav?1:0,pointerEvents:showNav?"auto":"none"}}>
         <div style={{background:"rgba(0,0,0,0.9)",backdropFilter:"blur(12px)",borderBottom:"0.5px solid rgba(255,255,255,0.08)",padding:"10px 16px",display:"flex",alignItems:"center",gap:10}}>

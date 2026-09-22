@@ -52,7 +52,7 @@ export const DEMO_MAX_CHAPTERS = 3;
 // `id` is what the client sends to /api/stripe-checkout; the server maps it to the real Stripe price.
 export const PLAN_TIERS = [
   { id: "free",       name: "Free",       priceUsd: 0,   credits: 0,    perks: ["Read & follow every series", "Free forever — just sign in", "Supported by short ads", "Upgrade to a paid plan to create"] },
-  { id: "pro",        name: "Pro",        priceUsd: 25,  credits: 700,  perks: ["700 credits / month", "Unlimited stories & chapters", "Translation (12 languages)", "Character voices"] },
+  { id: "pro",        name: "Pro",        priceUsd: 25,  credits: 700,  perks: ["700 credits / month", "Unlimited stories & chapters", "Translation (12 languages)", "Character voices", "Ad-free reading"] },
   { id: "studio",     name: "Studio",     priceUsd: 50,  credits: 1600, perks: ["1,600 credits / month", "Everything in Pro", "LoRA character training", "Priority generation"], highlight: true },
   { id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 4000, perks: ["4,000 credits / month", "Full access — every feature", "Best for full-time creators", "Top up anytime for more"] },
 ];
@@ -64,19 +64,25 @@ export const TOPUP_PACKS = [
 ];
 
 // Per-plan feature flags (client mirror of api/_pricing.js PLANS[].features). `maxStories: null` = unlimited.
+// `adFree` = no interstitial ads while reading (paid perk).
 export const PLAN_FEATURES = {
-  free:       { translate: false, voice: false, maxLangs: 1,  lora: false, maxStories: 0,    fullAccess: false },
-  pro:        { translate: true,  voice: true,  maxLangs: 12, lora: false, maxStories: null, fullAccess: false },
-  studio:     { translate: true,  voice: true,  maxLangs: 12, lora: true,  maxStories: null, fullAccess: false },
-  studio_pro: { translate: true,  voice: true,  maxLangs: 12, lora: true,  maxStories: null, fullAccess: true  },
+  free:       { translate: false, voice: false, maxLangs: 1,  lora: false, maxStories: 0,    adFree: false, fullAccess: false },
+  pro:        { translate: true,  voice: true,  maxLangs: 12, lora: false, maxStories: null, adFree: true,  fullAccess: false },
+  studio:     { translate: true,  voice: true,  maxLangs: 12, lora: true,  maxStories: null, adFree: true,  fullAccess: false },
+  studio_pro: { translate: true,  voice: true,  maxLangs: 12, lora: true,  maxStories: null, adFree: true,  fullAccess: true  },
 };
 
 // Effective features for a user RIGHT NOW. In demo (gate off) everything premium is off + the demo story
-// cap applies — unchanged current behavior. At launch, features come from the user's plan.
+// cap applies — unchanged current behavior (and no ads in demo). At launch, features come from the plan.
 export function featuresFor(user) {
-  if (!RELEASE_MODE) return { translate: TRANSLATION_ENABLED, voice: false, maxLangs: 1, lora: false, maxStories: DEMO_MAX_STORIES, fullAccess: false };
+  if (!RELEASE_MODE) return { translate: TRANSLATION_ENABLED, voice: false, maxLangs: 1, lora: false, maxStories: DEMO_MAX_STORIES, adFree: true, fullAccess: false };
   return PLAN_FEATURES[user?.plan || "free"] || PLAN_FEATURES.free;
 }
+
+// Ad gate: show a short interstitial every AD_EVERY_CHAPTERS chapter-opens for non-paying viewers (paid =
+// ad-free). AD_SECONDS is how long before "Continue" unlocks. Ads run only at launch (RELEASE_MODE).
+export const AD_EVERY_CHAPTERS = 6;
+export const AD_SECONDS = 15;
 export const SEEDS   = [
   // Murim / martial arts
   "A crippled martial artist gains the memories of the murim world's greatest killer",
