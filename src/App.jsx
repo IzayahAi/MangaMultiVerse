@@ -621,7 +621,7 @@ export default function MangaMultiVerse() {
         )}
 
         {reading&&(
-          <MangaReader story={reading} onBack={()=>{setReading(null);setSel(reading);}} signedIn={!!(auth?.token && auth.token!=="demo")} reporterId={auth?.user?.id}/>
+          <MangaReader story={reading} onBack={()=>{setReading(null);setSel(reading);}} signedIn={!!(auth?.token && auth.token!=="demo")} reporterId={auth?.user?.id} user={auth?.user}/>
         )}
 
         {page==="studio"&&<Studio user={auth?.user} credits={auth?.user?.credits} onUseCredits={onUseCredits} drafts={db.stories.filter(s=>s.status==="draft")} myStoryCount={db.stories.length} onSave={onSaveStory} onSaveTranslations={async (storyId, map)=>{ for (const [lang,data] of Object.entries(map||{})) await saveTranslation(storyId, lang, data, auth?.token); }} onSaveChapter={async (storyId, number, script, status)=>saveChapter(storyId, number, script, status, auth?.token)} onDeleteChapter={async (storyId, number)=>deleteChapter(storyId, number, auth?.token)} onSaveBible={async (storyId, data, prefs)=>saveBible(storyId, data, prefs, auth?.token)} onRequestAuth={()=>setShowAuth(true)} editStory={editStory} onEditConsumed={()=>setEditStory(null)} onPublished={()=>{ refreshPublic(); setDashTab("feed"); go("home"); }}/>}

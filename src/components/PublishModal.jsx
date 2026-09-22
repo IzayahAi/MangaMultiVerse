@@ -4,7 +4,7 @@ import { fetchTranslatedLangs } from "../lib/supabase.js";
 import { Tag, Btn, Spinner } from "./UI.jsx";
 import { useTheme } from "../ThemeContext.jsx";
 
-export default function PublishModal({story, onPublish, onClose, saving, progress}) {
+export default function PublishModal({story, onPublish, onClose, saving, progress, canTranslate = TRANSLATION_ENABLED, maxLangs = 999}) {
   const C = useTheme();
   const [autoLangs,setAuto] = useState(["Spanish","French","German","Portuguese"]);
   const [storedLangs,setStoredLangs] = useState([]); // already translated → pre-selected + marked ✓
@@ -44,7 +44,7 @@ export default function PublishModal({story, onPublish, onClose, saving, progres
           <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Checklist</div>
           {checks.map(([done,label],i)=><div key={i} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 0",borderBottom:`0.5px solid ${C.border}`,fontSize:12}}><span style={{fontSize:14,color:done?C.teal:C.muted}}>{done?"✓":"○"}</span><span style={{color:done?C.text:C.muted,flex:1}}>{label}</span>{!done&&<Tag c={C.gold}>Optional</Tag>}</div>)}
         </div>
-        {TRANSLATION_ENABLED ? (
+        {canTranslate ? (
         <div style={{marginBottom:20}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
             <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em"}}>Languages readers can translate into</div>
@@ -76,12 +76,12 @@ export default function PublishModal({story, onPublish, onClose, saving, progres
           {autoLangs.length>=12 && <div style={{fontSize:10.5,color:C.gold,marginTop:5}}>⚠ Pre-translating {autoLangs.length} languages runs {autoLangs.length} translation passes — publishing will take a few minutes.</div>}
         </div>
         ) : (
-          <div style={{marginBottom:20,fontSize:11,color:C.muted,padding:"10px 12px",background:C.card,borderRadius:8,border:`0.5px solid ${C.border}`}}>Published in English. Multi-language translation opens up at launch.</div>
+          <div style={{marginBottom:20,fontSize:11,color:C.muted,padding:"10px 12px",background:C.card,borderRadius:8,border:`0.5px solid ${C.border}`}}>Published in English. Multi-language translation is a Pro feature — upgrade to pre-translate your manga.</div>
         )}
         {saving && progress && <div style={{fontSize:12,color:C.purpleL,marginBottom:12,textAlign:"center"}}>{progress}</div>}
         <div style={{display:"flex",gap:10}}>
           <Btn onClick={onClose} sx={{flex:1}} disabled={saving}>Cancel</Btn>
-          <Btn v="pri" onClick={()=>onPublish(TRANSLATION_ENABLED?autoLangs:[])} disabled={saving} sx={{flex:2,justifyContent:"center"}}>{saving?<><Spinner size={13}/>{progress?"Translating…":"Publishing…"}</>:"✦ Publish to library →"}</Btn>
+          <Btn v="pri" onClick={()=>onPublish(canTranslate?autoLangs.slice(0,maxLangs):[])} disabled={saving} sx={{flex:2,justifyContent:"center"}}>{saving?<><Spinner size={13}/>{progress?"Translating…":"Publishing…"}</>:"✦ Publish to library →"}</Btn>
         </div>
       </div>
     </div>

@@ -62,6 +62,21 @@ export const TOPUP_PACKS = [
   { id: "large",  name: "3,000 credits",  credits: 3000,  priceUsd: 40 },
   { id: "xl",     name: "10,000 credits", credits: 10000, priceUsd: 120 },
 ];
+
+// Per-plan feature flags (client mirror of api/_pricing.js PLANS[].features). `maxStories: null` = unlimited.
+export const PLAN_FEATURES = {
+  free:       { translate: false, voice: false, maxLangs: 1,  lora: false, maxStories: 2,    fullAccess: false },
+  pro:        { translate: true,  voice: true,  maxLangs: 12, lora: false, maxStories: null, fullAccess: false },
+  studio:     { translate: true,  voice: true,  maxLangs: 12, lora: true,  maxStories: null, fullAccess: false },
+  studio_pro: { translate: true,  voice: true,  maxLangs: 12, lora: true,  maxStories: null, fullAccess: true  },
+};
+
+// Effective features for a user RIGHT NOW. In demo (gate off) everything premium is off + the demo story
+// cap applies — unchanged current behavior. At launch, features come from the user's plan.
+export function featuresFor(user) {
+  if (!RELEASE_MODE) return { translate: TRANSLATION_ENABLED, voice: false, maxLangs: 1, lora: false, maxStories: DEMO_MAX_STORIES, fullAccess: false };
+  return PLAN_FEATURES[user?.plan || "free"] || PLAN_FEATURES.free;
+}
 export const SEEDS   = [
   // Murim / martial arts
   "A crippled martial artist gains the memories of the murim world's greatest killer",

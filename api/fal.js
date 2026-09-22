@@ -1,4 +1,6 @@
-import { guard, corsHeaders, logSpend } from "./_guard.js";
+import { guard, corsHeaders, logSpend, getToken } from "./_guard.js";
+import { RELEASE_MODE } from "./_pricing.js";
+import { planAllows } from "./_supa.js";
 
 // Thin authenticated proxy for Fal.ai — the browser never holds VITE_FAL_KEY. The client keeps its
 // tuned orchestration (model failover, canvas black-detection, reseed) and calls this per Fal request.
@@ -17,6 +19,11 @@ export default async function handler(req, res) {
 
   const key = process.env.FAL_KEY;
   if (!key) return res.status(500).json({ error: "FAL_KEY not configured" });
+
+  // LoRA training is a Studio-tier feature at launch — enforce server-side.
+  if (RELEASE_MODE && req.headers["x-mv-action"] === "lora" && !(await planAllows(getToken(req), "lora"))) {
+    return res.status(403).json({ error: "LoRA character training is a Studio feature — upgrade to unlock it." });
+  }
 
   const g = await guard(req, req.headers["x-mv-action"] || "free", "fal");
   if (!g.ok) return res.status(g.status).json({ error: g.error, ...(g.code ? { code: g.code } : {}) });

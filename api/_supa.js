@@ -50,6 +50,18 @@ export async function svcInsert(table, row) {
   } catch { return false; }
 }
 
+// Does the caller's plan include a feature (e.g. "voice", "lora", "translate")? Server-side enforcement
+// of the per-plan gates — the client can hide a button, but this is what actually blocks a bypass.
+// Reads the caller's plan past RLS. Fails closed (denies) if the plan can't be resolved.
+export async function planAllows(token, feature) {
+  const { PLANS } = await import("./_pricing.js");
+  const user = await verifyUser(token);
+  if (!user?.id) return false;
+  const profile = await svcGetProfile(user.id);
+  const plan = PLANS[profile?.plan || "free"] || PLANS.free;
+  return !!plan.features?.[feature];
+}
+
 // Has this Stripe event already been processed? (idempotency — webhooks retry.)
 export async function eventSeen(stripeEventId) {
   if (!hasService() || !stripeEventId) return false;

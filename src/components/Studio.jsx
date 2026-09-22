@@ -1,5 +1,5 @@
 ﻿import { useState, useRef, useEffect } from "react";
-import { SEEDS, rndEmoji, rndCover, MOOD_PALETTES, getMood, LANG_GROUPS, RECOMMENDED_LANGS, STYLE_NATIVE, MAX_LANGS_PER_PUBLISH, TRANSLATION_ENABLED, DEMO_MAX_STORIES, DEMO_MAX_CHAPTERS, RELEASE_MODE } from "../constants.js";
+import { SEEDS, rndEmoji, rndCover, MOOD_PALETTES, getMood, LANG_GROUPS, RECOMMENDED_LANGS, STYLE_NATIVE, MAX_LANGS_PER_PUBLISH, TRANSLATION_ENABLED, DEMO_MAX_STORIES, DEMO_MAX_CHAPTERS, RELEASE_MODE, featuresFor } from "../constants.js";
 import { useTheme } from "../ThemeContext.jsx";
 import {
   askClaude, generatePanelImage, trainCharacterLora,
@@ -143,6 +143,11 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
   // Demo/beta: creating requires a signed-in account so all generated manga saves to the cloud and is
   // ready to publish at launch. Reading stays open to guests. Returns false (and prompts sign-in) if
   // the visitor isn't signed in.
+  // Effective per-plan features (demo defaults when the gate is off). Drives the tier gates below.
+  const feat = featuresFor(user);
+  // Premium HD audio (ElevenLabs) needs the env kill-switch on AND the user's plan to include voice.
+  const voiceOn = HAS_ELEVEN && feat.voice;
+
   const requireAuth = () => {
     if (user) return true;
     setToast({ msg: "Create a free account to save your manga — no payment, it's just yours to keep.", type: "warn" });
@@ -163,8 +168,10 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     if (!requireAuth()) return;
     // Demo cap: a creator can make up to DEMO_MAX_CHAPTERS manga (each is a Chapter 1). Editing an
     // existing one (editingId set) is always allowed; only NEW creations count. Unlimited at launch.
-    if (!RELEASE_MODE && !editingId && (myStoryCount || 0) >= DEMO_MAX_STORIES) {
-      setToast({ msg: `Demo limit: ${DEMO_MAX_STORIES} stories max (up to ${DEMO_MAX_CHAPTERS} chapters each). Add chapters to what you've made — full access opens at launch.`, type: "warn" });
+    if (!editingId && feat.maxStories != null && (myStoryCount || 0) >= feat.maxStories) {
+      setToast({ msg: RELEASE_MODE
+        ? `Your plan includes ${feat.maxStories} stor${feat.maxStories === 1 ? "y" : "ies"} — upgrade for unlimited, or add chapters to what you've made.`
+        : `Demo limit: ${DEMO_MAX_STORIES} stories max (up to ${DEMO_MAX_CHAPTERS} chapters each). Add chapters to what you've made — full access opens at launch.`, type: "warn" });
       return;
     }
     setStep("gen"); setStory(null); setScript(null); setCb(null);
@@ -310,11 +317,14 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     }
   };
   const genChar     = () => { setTab("char");   gen(P_CHAR(story),   r=>setCb(r)); };
-  const genVoices   = () => { setTab("voices"); gen(P_VOICES(story), r=>setVoices(r)); };
+  const genVoices   = () => {
+    if (RELEASE_MODE && !feat.voice) { setToast({ msg: "Character voices are a Pro feature — upgrade to add them.", type: "warn" }); return; }
+    setTab("voices"); gen(P_VOICES(story), r=>setVoices(r));
+  };
   // Translate the chapter into EVERY selected language (batched 12 panels/call), save each to the
   // translations store so readers get them instantly, and preview the last one.
   const genTranslate = async () => {
-    if (!TRANSLATION_ENABLED) { setToast({ msg: "Translation is English-only during the demo — it opens up at launch.", type: "warn" }); return; }
+    if (!feat.translate) { setToast({ msg: RELEASE_MODE ? "Translation is a Pro feature — upgrade to unlock other languages." : "Translation is English-only during the demo — it opens up at launch.", type: "warn" }); return; }
     if (!requireAuth()) return;
     if (!script?.panels?.length || !transLangs.length) return;
     setTransLoading(true); setTranslation(null);
@@ -753,7 +763,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     const lines = (v.example_lines && v.example_lines.length ? v.example_lines : [v.catchphrase].filter(Boolean));
     if (!lines.length) { setToast({ msg: "No sample lines to play", type: "warn" }); return; }
 
-    if (HAS_ELEVEN) {
+    if (voiceOn) {
       setSpeaking(v.character);
       const token = Symbol("play");
       playTokenRef.current = token;
@@ -1443,7 +1453,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
   return (
     <div style={{animation:"fadeUp .2s ease"}}>
       {toast&&<Toast msg={toast.msg} type={toast.type} onDone={()=>setToast(null)}/>}
-      {showPub&&<PublishModal story={story} onPublish={publish} onClose={()=>setShowPub(false)} saving={publishing} progress={pubProgress}/>}
+      {showPub&&<PublishModal story={story} onPublish={publish} onClose={()=>setShowPub(false)} saving={publishing} progress={pubProgress} canTranslate={feat.translate} maxLangs={feat.maxLangs}/>}
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:16,gap:12}}>
         <div style={{minWidth:0}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1699,7 +1709,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
                     </div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
-                    {HAS_ELEVEN && (
+                    {voiceOn && (
                       <select value={voiceOverrides[v.character]||""} onChange={e=>{const id=e.target.value; setVoiceOverrides(prev=>{const next={...prev}; if(id)next[v.character]=id; else delete next[v.character]; return next;});}}
                         title="Choose this character's HD voice"
                         style={{fontSize:11,padding:"4px 8px",borderRadius:7,border:`1px solid ${acc}66`,background:C.surf,color:C.text,cursor:"pointer",fontFamily:"inherit",maxWidth:150}}>
@@ -1709,7 +1719,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
                     )}
                     <button onClick={()=>speakVoice(v)} style={{fontSize:11,padding:"5px 12px",borderRadius:7,border:`1px solid ${acc}`,background:speaking===v.character?acc:acc+"18",color:speaking===v.character?"#fff":acc,cursor:"pointer",fontFamily:"inherit",fontWeight:500,display:"flex",alignItems:"center",gap:5}}>
                       {speaking===v.character?"■ Stop":"▶ Listen"}
-                      {HAS_ELEVEN && <span style={{fontSize:8,fontWeight:700,padding:"1px 4px",borderRadius:4,background:speaking===v.character?"rgba(255,255,255,0.25)":acc+"33",letterSpacing:"0.04em"}}>HD</span>}
+                      {voiceOn && <span style={{fontSize:8,fontWeight:700,padding:"1px 4px",borderRadius:4,background:speaking===v.character?"rgba(255,255,255,0.25)":acc+"33",letterSpacing:"0.04em"}}>HD</span>}
                     </button>
                     <Tag c={acc}>{v.speech_style}</Tag>
                   </div>

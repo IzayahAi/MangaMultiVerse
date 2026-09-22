@@ -1,5 +1,5 @@
 ﻿import { useState, useRef, useEffect } from "react";
-import { MOOD_PALETTES, getMood, LANG_GROUPS, RELEASE_MODE, TRANSLATION_ENABLED } from "../constants.js";
+import { MOOD_PALETTES, getMood, LANG_GROUPS, RELEASE_MODE, TRANSLATION_ENABLED, featuresFor } from "../constants.js";
 import { useTheme } from "../ThemeContext.jsx";
 import { askClaude, P_TRANSLATE, translateChapter } from "../lib/claude.js";
 import { fetchTranslation, fetchChapter, submitReport } from "../lib/supabase.js";
@@ -119,7 +119,7 @@ const buildPanels = (story, panelImages = {}, activeScript = story.script, chapt
 
 const PANEL_HEIGHTS = {full_page:480, half_page:280, quarter:180, thin_strip:100};
 
-const MangaReader = ({ story, onBack, panelImages, signedIn = false, reporterId = null }) => {
+const MangaReader = ({ story, onBack, panelImages, signedIn = false, reporterId = null, user = null }) => {
   const C = useTheme();
   const [readMode, setReadMode] = useState("scroll");
   const [currentPage, setCurrentPage] = useState(0);
@@ -211,7 +211,7 @@ const MangaReader = ({ story, onBack, panelImages, signedIn = false, reporterId 
       } catch {}
       // At release, live on-demand translation is a signed-in, credited action — guests get only the
       // pre-generated languages (served above). During demo (gate off) everyone can translate live.
-      if (RELEASE_MODE && !signedIn) { if (active) { setTransErr(true); setTranslating(false); } return; }
+      if (RELEASE_MODE && (!signedIn || !featuresFor(user).translate)) { if (active) { setTransErr(true); setTranslating(false); } return; }
       // 2) Live on-demand fallback — concurrent 12-panel batches (fast, never truncates).
       try {
         const out = await translateChapter(chScript, lang, story.voices, story);

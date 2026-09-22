@@ -1,4 +1,6 @@
-import { guard, corsHeaders } from "./_guard.js";
+import { guard, corsHeaders, getToken } from "./_guard.js";
+import { RELEASE_MODE } from "./_pricing.js";
+import { planAllows } from "./_supa.js";
 
 // Authenticated proxy for ElevenLabs text-to-speech — the browser never holds the ElevenLabs key.
 // Returns the audio/mpeg bytes; the client wraps them in an object URL.
@@ -10,6 +12,11 @@ export default async function handler(req, res) {
 
   const key = process.env.ELEVENLABS_KEY;
   if (!key) return res.status(500).json({ error: "ELEVENLABS_KEY not configured" });
+
+  // Voice is a paid-plan feature at launch — enforce server-side (client gate is bypassable).
+  if (RELEASE_MODE && !(await planAllows(getToken(req), "voice"))) {
+    return res.status(403).json({ error: "Character voices aren't included in your plan — upgrade to Pro." });
+  }
 
   const g = await guard(req, "voice_tts", "elevenlabs");
   if (!g.ok) return res.status(g.status).json({ error: g.error });
