@@ -50,7 +50,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
   const [storedLangs,setStoredLangs] = useState([]); // languages already saved in the translations store
   const ALL_TRANS = LANG_GROUPS.flatMap(g=>g.langs).filter(l=>l!=="English");
   const togTrans = l => setTransLangs(p => p.includes(l) ? p.filter(x=>x!==l) : [...p,l]);
-  const [recMode,setRecMode]         = useState("seeds");
+  const [recMode,setRecMode]         = useState("write"); // studio is write-your-own only — no seed prompts/suggestions
   const [trendingSeeds,setTrending]  = useState([]);
   const [trendingLoading,setTrendingLoad] = useState(false);
   const [moreLike,setMoreLike]       = useState([]);
@@ -1197,18 +1197,6 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
         </div>
       </div>
 
-      <div style={{display:"flex",gap:0,marginBottom:12,background:C.card,borderRadius:9,padding:3,border:`0.5px solid ${C.border}`}}>
-        {[
-          {id:"seeds",    label:"✦ Trending"},
-          {id:"personal", label:"◈ For you"},
-          {id:"wizard",   label:"⬡ Wizard"},
-          {id:"write",    label:"✎ Write own"},
-        ].map(m=>(
-          <button key={m.id} onClick={()=>setRecMode(m.id)} style={{flex:1,padding:"7px 4px",borderRadius:7,fontSize:11,border:"none",background:recMode===m.id?C.purple:"transparent",color:recMode===m.id?"#fff":C.muted,cursor:"pointer",fontFamily:"inherit",fontWeight:recMode===m.id?500:400,transition:"all .15s"}}>
-            {m.label}
-          </button>
-        ))}
-      </div>
 
       {recMode==="seeds"&&(
         <div style={{marginBottom:14}}>
