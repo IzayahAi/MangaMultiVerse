@@ -61,7 +61,7 @@ export const DEMO_MAX_CHAPTERS = 3;
 // `id` is what the client sends to /api/stripe-checkout; the server maps it to the real Stripe price.
 export const PLAN_TIERS = [
   { id: "pro",        name: "Pro",        priceUsd: 15,  credits: 5000,   perks: ["5,000 credits / month", "Unlimited stories & chapters", "Character voices", "Ad-free reading"] },
-  { id: "studio",     name: "Studio",     priceUsd: 30,  credits: 20000,  perks: ["20,000 credits / month", "Everything in Pro", "LoRA character training", "Priority generation"], highlight: true },
+  { id: "studio",     name: "Studio",     priceUsd: 30,  credits: 10000,  perks: ["10,000 credits / month", "Everything in Pro", "LoRA character training", "Priority generation"], highlight: true },
   { id: "studio_pro", name: "Studio Pro", priceUsd: 100, credits: 30000, interval: "year", perks: ["✦ Premium art — Juggernaut Pro (best quality)", "30,000 credits for a full year", "Everything in Studio + LoRA", "The best art on the platform"] },
 ];
 export const TOPUP_PACKS = [
