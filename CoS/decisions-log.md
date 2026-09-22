@@ -4,16 +4,19 @@ _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
 ## 2026-09-22
 
-- **Pricing reassessed + finalized after the ~20× image-cost drop.** A 50-panel chapter now costs ~$0.05
-  (Juggernaut Lightning, was ~$1 on Fal), so the old tight tiers were reworked for growth. Final:
-  **Pro $15/mo · 8,000 cr (~145 ch/mo)**, **Studio $30/mo · 16,000 cr (~290 ch/mo, "most popular")**,
-  **Studio Pro $100/YEAR · 60,000 cr (~1,090 ch/yr)** — the annual value/commitment deal (dialed from a
-  proposed 100k to 60k to keep ~40% margin even if maxed). Top-ups collapsed from 4 packs to **one: 5,000
-  cr / $10** (~500 cr/$, matches the Pro sub — the old packs were ~60–83 cr/$, an awkward mismatch). Removed
-  translation from the paid perks (it's free for all readers now). All tiers ~43–52% margin even at max
-  usage; realistically much higher. Demo grant raised to 700 to cover the new 3×3×50 cap. **Pre-billing
-  check flagged: confirm the real per-panel cost via Spend Sentinel `cost_ledger` (per-MP vs 1 MP-minimum
-  billing doubles cost) before flipping Stripe on.** Stripe setup is now 4 products (3 subs + 1 pack). — Mr. K
+- **Pricing reassessed + restructured after the ~20× image-cost drop, then split by art quality.** A
+  50-panel chapter now costs ~$0.05 (Juggernaut Lightning, was ~$1 on Fal). After several iterations landed
+  on a **quality-vs-quantity ladder** with a real Studio Pro differentiator (premium art):
+  - **Pro $15/mo · 5,000 cr · standard (Lightning) art · no LoRA** — limited entry (~91 ch/mo, ~68% margin).
+  - **Studio $30/mo · 16,000 cr · standard art · everything + LoRA** — the volume tier (~291 ch/mo, ~49%).
+  - **Studio Pro $100/YEAR · 35,000 cr · PREMIUM Juggernaut Pro art** — best quality, fewer tokens
+    (~636 ch/yr, ~29%). `premiumArt` plan feature routes its panels to `RunDiffusion/Juggernaut-pro-flux`
+    (api/image.js); demo/free stay on Lightning.
+  - **One top-up: 5,000 cr / $10** (~500 cr/$, matches Pro). Translation removed from paid perks (free for
+    all readers). Demo grant raised to 700 (covers the 3×3×50 cap). Why premium art is Studio-Pro-only:
+    on Juggernaut Pro ($0.0049/MP) every tier loses money at the old credit levels if maxed, so it's the
+    single premium differentiator, not universal. **Pre-billing: verify the real per-panel cost via Spend
+    Sentinel `cost_ledger` (per-MP vs 1 MP-minimum doubles cost) before Stripe.** Stripe = 4 products. — Mr. K
 
 - **Translation model: every manga, every language, every reader — free + globally cached.** Founder wants
   max reach ("all mangas possible for everyone in every language … to get more views"), and flagged
