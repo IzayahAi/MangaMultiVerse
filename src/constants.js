@@ -181,4 +181,3 @@ export const STYLE_NATIVE = {
 };
 
 
-// build marker: force fresh Vercel build to pick up VITE_SUPABASE_ANON_KEY

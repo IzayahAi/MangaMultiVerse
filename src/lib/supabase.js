@@ -1,8 +1,11 @@
 ﻿import { useState, useEffect, useCallback } from "react";
 import { DEMO_CREDITS } from "../constants.js";
 
-const SB_URL = import.meta.env.VITE_SUPABASE_URL || "https://your-project.supabase.co";
-const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "your-anon-key";
+// The Supabase URL + anon key are PUBLIC by design (they ship in the browser bundle; data is protected by
+// RLS, not by hiding these). Hardcoded here as fallbacks so the app works even if the Vercel VITE_ env var
+// isn't exposed to the client build — env vars still override when present. Project: kkpzbfhnpvhnykxitnon.
+const SB_URL = import.meta.env.VITE_SUPABASE_URL || "https://kkpzbfhnpvhnykxitnon.supabase.co";
+const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtrcHpiZmhucHZobnlreGl0bm9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5ODUxMDYsImV4cCI6MjA5MDU2MTEwNn0.d81OUBcuN5DPinR1pL2I3xoMNRHwM_uYE0J2RKhk1jo";
 export const DEMO = SB_URL.includes("your-project");
 
 // ── Live session so any request can self-refresh a lapsed token and retry once ──
