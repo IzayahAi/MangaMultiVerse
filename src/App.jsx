@@ -190,16 +190,10 @@ export default function MangaMultiVerse() {
   };
 
   const onUseCredits = async (amount) => {
-    if (!auth?.user) return;
-    // At release, the server proxies charge credits atomically (and report the new balance via
-    // x-mv-balance → setApiToken's onBalance), so the client must NOT also decrement — that would
-    // double-charge. In demo (gate off) the server skips charging, so the client is the sole charger,
-    // preserving current behavior + the moving credit counter.
-    if (RELEASE_MODE) return auth.user.credits ?? 0;
-    const current = auth.user.credits ?? 0;
-    const next = await spendCredits(auth.user.id, auth.token, current, amount);
-    setAuth(prev => prev ? {...prev, user:{...prev.user, credits: next}} : prev);
-    return next;
+    // The server proxies are the sole credit charger in BOTH modes now (one-time per-account allotment,
+    // enforced via spend_credits). They report the new balance via x-mv-balance → setApiToken's onBalance,
+    // so the client must NOT decrement here (that would double-charge). No-op; display updates from onBalance.
+    return auth?.user?.credits ?? 0;
   };
 
   const NAV = [

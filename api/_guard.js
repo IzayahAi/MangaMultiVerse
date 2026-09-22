@@ -73,50 +73,69 @@ export function corsHeaders(req) {
   };
 }
 
-// Record a charged action to the spend ledger (best-effort). Skips `free` (retries/polls) and `brain`
-// with no cost — the Fal 429 rate captures retry burn. `provider` is passed by each proxy.
-async function recordSpend(req, action, provider) {
+// Record a charged action to the spend ledger (best-effort). Skips `free` (retries/polls) and cost-0
+// actions. `creditsCharged` is what actually came off the account (0 when not charged).
+async function recordSpend(req, action, provider, creditsCharged = 0) {
   if (!provider || action === "free") return;
   const usd = usdFor(action);
   if (!usd) return; // nothing to trend (e.g. cost-0 actions)
-  await logSpend({
-    provider,
-    action,
-    usd,
-    credits: RELEASE_MODE ? costFor(action) : 0,
-    ip: clientIp(req),
+  await logSpend({ provider, action, usd, credits: creditsCharged, ip: clientIp(req) });
+}
+
+// Atomically spend `amount` credits from the caller's account via the spend_credits RPC. Returns:
+//   { ok:true, balance }     — charged, new balance
+//   { unarmed:true }         — the RPC isn't created yet (db/spend_credits.sql not run) → caller decides
+//   { ok:false, status }     — 401 (bad session) or 402 (insufficient)
+async function chargeCredits(token, amount) {
+  const r = await fetch(`${SB_URL}/rest/v1/rpc/spend_credits`, {
+    method: "POST",
+    headers: { apikey: SB_ANON, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ p_amount: amount }),
   });
+  if (r.status === 404) return { unarmed: true };                 // RPC not set up yet
+  if (r.status === 401) return { ok: false, status: 401, error: "Invalid session" };
+  if (!r.ok) return { ok: false, status: 500, error: `Credit check failed (${r.status})` };
+  const bal = await r.json(); // scalar int, or null when insufficient
+  if (bal === null || bal === undefined) return { ok: false, status: 402, error: "Out of credits" };
+  return { ok: true, balance: bal };
 }
 
 // Verify the caller and atomically charge `action`'s cost, then log the spend. Returns:
-//   { ok:true, balance }            — proceed (balance is null when the gate is off)
-//   { ok:false, status, error }     — 401 (no/invalid token) or 402 (insufficient credits)
-// `provider` (anthropic|fal|together|elevenlabs) is only used for the spend ledger.
+//   { ok:true, balance }            — proceed (balance may be null when nothing was charged)
+//   { ok:false, status, error }     — 401 (no/invalid token), 402 (insufficient), 429 (demo cap)
+// Credits are the ONE-TIME per-account allotment (the demo grant); they deplete and don't reset until a
+// paid renewal. This is enforced in demo too (signed-in), so the demo is one-time per account — not a
+// daily-resetting free-for-all. `provider` is used for the spend ledger.
 export async function guard(req, action, provider) {
-  // Demo mode: no sign-in wall, but a per-IP daily cap keeps costs sane. Launch mode: auth + credits.
+  const token = getToken(req);
+  const amount = costFor(action);
+
   if (!RELEASE_MODE) {
+    // Per-IP daily cap first (anti-abuse across accounts), then deplete the signed-in account's allotment.
     const d = await demoLimit(req, action);
-    if (d.ok) await recordSpend(req, action, provider);
+    if (!d.ok) return d;
+    if (token && amount > 0 && SB_URL && SB_ANON) {
+      try {
+        const c = await chargeCredits(token, amount);
+        if (c.unarmed) { await recordSpend(req, action, provider, 0); return { ok: true, balance: null }; } // RPC not armed yet → per-IP only
+        if (!c.ok) return c; // 402 when the one-time demo allotment is used up
+        await recordSpend(req, action, provider, amount);
+        return { ok: true, balance: c.balance };
+      } catch (e) { return { ok: true, balance: null }; } // never break the demo on a transient error
+    }
+    await recordSpend(req, action, provider, 0);
     return d;
   }
 
-  const token = getToken(req);
+  // Launch: require auth + charge.
   if (!token) return { ok: false, status: 401, error: "Sign in required" };
   if (!SB_URL || !SB_ANON) return { ok: false, status: 500, error: "Auth not configured" };
-
-  const amount = costFor(action);
   try {
-    const r = await fetch(`${SB_URL}/rest/v1/rpc/spend_credits`, {
-      method: "POST",
-      headers: { apikey: SB_ANON, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ p_amount: amount }),
-    });
-    if (r.status === 401) return { ok: false, status: 401, error: "Invalid session" };
-    if (!r.ok) return { ok: false, status: 500, error: `Credit check failed (${r.status})` };
-    const bal = await r.json(); // scalar int, or null when balance was insufficient
-    if (bal === null || bal === undefined) return { ok: false, status: 402, error: "Out of credits" };
-    await recordSpend(req, action, provider);
-    return { ok: true, balance: bal };
+    const c = await chargeCredits(token, amount);
+    if (c.unarmed) return { ok: false, status: 500, error: "Credits not configured (run db/spend_credits.sql)" };
+    if (!c.ok) return c;
+    await recordSpend(req, action, provider, amount);
+    return { ok: true, balance: c.balance };
   } catch (e) {
     return { ok: false, status: 500, error: "Credit check error: " + e.message };
   }
