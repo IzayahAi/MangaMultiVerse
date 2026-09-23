@@ -1,6 +1,7 @@
 import { guard, corsHeaders, getToken } from "./_guard.js";
 import { RELEASE_MODE } from "./_pricing.js";
 import { planAllows } from "./_supa.js";
+import { uploadPanelArt } from "./_storage.js";
 
 export default async function handler(req, res) {
   const cors = corsHeaders(req);
@@ -96,15 +97,22 @@ export default async function handler(req, res) {
       const imageB64 = data.data?.[0]?.b64_json;
       const imageUrl = data.data?.[0]?.url;
 
-      if (imageB64) return res.status(200).json({ b64: imageB64 });
+      // Upload to Supabase Storage so the panel gets a real https URL — a base64 data URI never passes
+      // the client's publicPanelImages() filter, so it would otherwise never reach the story's DB record
+      // (see db/panel_art_storage.sql). Falls back to returning base64 directly if the upload fails
+      // (bucket not set up yet, transient error) so generation still works either way.
+      if (imageB64) {
+        const uploaded = await uploadPanelArt(Buffer.from(imageB64, 'base64'), 'image/png');
+        return res.status(200).json(uploaded ? { url: uploaded } : { b64: imageB64 });
+      }
 
       if (imageUrl) {
         try {
           const imgRes = await fetch(imageUrl);
           if (imgRes.ok) {
-            const buffer = await imgRes.arrayBuffer();
-            const base64 = Buffer.from(buffer).toString('base64');
-            return res.status(200).json({ b64: base64 });
+            const buffer = Buffer.from(await imgRes.arrayBuffer());
+            const uploaded = await uploadPanelArt(buffer, 'image/png');
+            return res.status(200).json(uploaded ? { url: uploaded } : { b64: buffer.toString('base64') });
           }
         } catch {}
         return res.status(200).json({ url: imageUrl });

@@ -1,4 +1,5 @@
 import { guard, corsHeaders } from "./_guard.js";
+import { uploadPanelArt } from "./_storage.js";
 
 // DeepInfra FLUX-schnell proxy — the cheap fallback under the Together primary. ~$0.0005/MP·step
 // (well under a cent per panel) and, unlike Fal, no aggressive INPUT content-filter, so combat/dark
@@ -69,15 +70,30 @@ export default async function handler(req, res) {
     const first = data.images?.[0] || data.image_url || data.data?.[0]?.url || null;
     const b64 = data.data?.[0]?.b64_json || null;
 
-    if (b64) return res.status(200).json({ b64 });
+    // Upload to Supabase Storage so the panel gets a real https URL — a base64 data URI never passes the
+    // client's publicPanelImages() filter, so it would otherwise never reach the story's DB record (see
+    // db/panel_art_storage.sql). Falls back to the old base64/data-URI behavior if the upload fails
+    // (bucket not set up yet, transient error) so generation still works either way.
+    if (b64) {
+      const uploaded = await uploadPanelArt(Buffer.from(b64, 'base64'), 'image/png');
+      return res.status(200).json(uploaded ? { url: uploaded } : { b64 });
+    }
     if (first && typeof first === 'string') {
-      if (first.startsWith('data:')) return res.status(200).json({ url: first });   // data URI — usable directly as <img src>
-      // Remote URL — fetch to bytes so the client gets a stable data payload (matches the Together proxy).
+      if (first.startsWith('data:')) {
+        const m = first.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+        if (m) {
+          const uploaded = await uploadPanelArt(Buffer.from(m[2], 'base64'), m[1]);
+          if (uploaded) return res.status(200).json({ url: uploaded });
+        }
+        return res.status(200).json({ url: first }); // upload failed — still usable directly as <img src>, just not persisted
+      }
+      // Remote URL — fetch to bytes, then upload.
       try {
         const imgRes = await fetch(first);
         if (imgRes.ok) {
-          const buffer = await imgRes.arrayBuffer();
-          return res.status(200).json({ b64: Buffer.from(buffer).toString('base64') });
+          const buffer = Buffer.from(await imgRes.arrayBuffer());
+          const uploaded = await uploadPanelArt(buffer, 'image/png');
+          return res.status(200).json(uploaded ? { url: uploaded } : { b64: buffer.toString('base64') });
         }
       } catch {}
       return res.status(200).json({ url: first });
