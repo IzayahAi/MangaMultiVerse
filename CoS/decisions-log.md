@@ -2,6 +2,53 @@
 
 _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
+## 2026-09-23
+
+- **Panel art quality root-caused and fixed, twice.** First: panels were rendering as extreme face
+  close-ups regardless of the scene/action-craft prompt work — `generatePanelImage()` put the ~600-char
+  style/quality preamble FIRST, and both provider proxies truncated the prompt to 200–300 chars, so every
+  panel generated from nothing but the style text (which for PRISMA literally says "expressive anime manga
+  faces"). Reordered scene+characters+action first, style trails; raised truncation to 1800 chars. Second:
+  busier panels (long scene + multiple characters) still ran past even 1800 chars before the style/color
+  block, causing inconsistent color/style between panels in the same chapter — added a short
+  guaranteed-to-survive "essential" prefix (color mode + anatomy + no-text) at the very front. Both
+  verified with real before/after panel generations. — Mr. K
+
+- **DeepInfra promoted to primary art provider, Together demoted to fallback.** Funded 2026-09-23; a
+  side-by-side test on the same prompt showed DeepInfra rendering fuller environments with no text-glitch
+  artifacts, at roughly a third the per-panel cost of Together's Lightning model. — Mr. K
+
+- **Found panel art has never reached the database, for any story.** `publicPanelImages()` only accepts
+  `http`-prefixed URLs; both providers return base64, wrapped as a `data:` URI, which never qualified.
+  Confirmed directly against a same-day-published story (zero `script.panel_images` entries). Fix shipped:
+  a public Supabase Storage bucket (`db/panel_art_storage.sql`) + an upload helper wired into both provider
+  proxies. **Not yet verified end-to-end** — blocked on a corrupted `SUPABASE_ANON_KEY` (below). — Mr. K
+
+- **Found `SUPABASE_ANON_KEY` in Vercel Production is corrupted** — a bullet character replaced one
+  character of the 208-char key, almost certainly a masked-field copy-paste artifact. Silently breaks any
+  server call using it as a header value; several such failures were already being swallowed by existing
+  "never break the demo" fallback logic elsewhere, so this has likely been degrading things invisibly for
+  a while, not just today. Gave Michele the clean value (verified byte-identical to the working
+  client-side hardcoded key). First re-save attempt landed empty — unresolved as of session close, see
+  open-questions.md. — Mr. K
+
+- **Admin (hypheezay@gmail.com only) now exempt from all demo-mode limits** — story cap, chapter cap, and
+  the server-side per-IP/credit caps — in both RELEASE_MODE states, so building/testing isn't throttled
+  like a visitor. — Mr. K
+
+- **Hardened scriptCraft against character invention and repetition**, diagnosed via a 3-agent review of a
+  test chapter — the model was inventing unlisted characters and giving dialogue to unnamed
+  factions/voices despite an existing "never invent" rule, plus heavy phrase repetition. Verified via a
+  real regeneration: invented-character count dropped roughly in half and the specific "who did the
+  protagonist die saving" contradiction we found was fully resolved. — Mr. K
+
+- **Translate tab removed from the Studio creation flow** per Michele's request (reader-side live
+  translation untouched — separate feature, separate code path). — Mr. K
+
+- **Redo buttons + Add Character shipped** — re-roll Logline/Central Conflict/Chapter 1 Hook individually
+  without discarding the rest of a generated concept, and grow the cast after initial generation via a
+  short hint. Neither existed before this session. — Mr. K
+
 ## 2026-09-22
 
 - **Public demo is LIVE (https://mangaverse-deploy.vercel.app), reader path smoke-tested green.** Browse +

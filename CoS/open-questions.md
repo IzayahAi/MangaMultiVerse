@@ -14,10 +14,25 @@ _Decided 2026-09-22: free public demo, gate stays OFF, Together fallback, no Str
 and verified live this session. Only a couple of founder-side items remain:_
 
 **Demo is LIVE (2026-09-22) — remaining cleanup after the two-project fix:**
-- **Point the SERVER-side Vercel vars at `kkpzbfhnpvhnykxitnon`** — `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
-  `SUPABASE_SERVICE_ROLE_KEY` (the non-`VITE_` ones). The client is hardcoded to kkpz now, but server
-  functions (translation caching via /api/translate persist, the maintenance agents, webhook) still read
-  these; if they point at the old `hhjy` project those features write to the wrong DB.
+- **BLOCKING (found 2026-09-23): `SUPABASE_ANON_KEY` in Vercel Production is corrupted** — a bullet
+  character ("•") sits at index 8 of the 208-char key (same length as the real key, so one char got
+  swapped — a masked-field copy-paste artifact). This silently breaks every server-side call that uses it
+  as a header value; many failures get swallowed by existing "never break the demo" fallback logic, so
+  it's been failing invisibly, not loudly. Confirmed the client-side hardcoded key in
+  `src/lib/supabase.js` is clean/correct — same value, byte-verified. Gave Michele that exact value to
+  re-paste. First re-add attempt saved as EMPTY (confirmed via live `vercel env pull`) — needs a retry +
+  confirm it actually saved, then redeploy. `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` still worth a
+  once-over while in there (service role was confirmed empty earlier this week — separate item, see below).
+- **Panel art has NEVER reached the database, for any story (found + partially fixed 2026-09-23).** Both
+  image providers return raw base64; the client wraps it as a `data:` URI; `publicPanelImages()` (the
+  function deciding what's safe to push to the cloud) only keeps values starting with `http`, so a
+  `data:` URI never qualified — generated art only ever lived in the creator's own browser localStorage.
+  Confirmed directly: a story published same-day has zero entries in `script.panel_images`. Fixed:
+  `db/panel_art_storage.sql` (public `panel-art` Storage bucket, Michele ran it) + `api/_storage.js`
+  (uploadPanelArt) wired into both `api/image.js` and `api/deepinfra.js` — uploads now happen and return a
+  real https URL. **Can't verify end-to-end until the SUPABASE_ANON_KEY item above is actually fixed**,
+  since the same corrupted key is what the upload call uses. Once confirmed: consider regenerating art for
+  already-published stories (their `script.panel_images` is currently empty).
 - **Founder create-flow smoke test:** signup → create a story → generate a chapter (confirm Juggernaut-ish
   art) → publish. Reader path is verified; create needs a real login.
 - **Delete the old `hhjyfwgujmiiariqtaix` Supabase project** once nothing needs it (it's paused + stale).
