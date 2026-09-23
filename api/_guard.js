@@ -53,6 +53,20 @@ async function demoLimit(req, action) {
   } catch { return { ok: true, balance: null }; }
 }
 
+// Is the caller an admin? Self-read via RLS (auth.uid() = id) — needs only the anon key + the caller's
+// own JWT, no service role. Best-effort: any failure just means "not admin" (fail closed).
+async function isAdminToken(token) {
+  if (!token || !SB_URL || !SB_ANON) return false;
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/profiles?select=role`, {
+      headers: { apikey: SB_ANON, Authorization: `Bearer ${token}` },
+    });
+    if (!r.ok) return false;
+    const rows = await r.json();
+    return Array.isArray(rows) && rows.some(p => p.role === "admin");
+  } catch { return false; }
+}
+
 // Pull the bearer token from an edge Request (headers.get) or a node req (headers object).
 export function getToken(req) {
   const h = req?.headers;
@@ -109,6 +123,13 @@ async function chargeCredits(token, amount) {
 export async function guard(req, action, provider) {
   const token = getToken(req);
   const amount = costFor(action);
+
+  // Admin bypass — no per-IP demo cap, no credit depletion, in either mode. Admin needs to build/test
+  // without hitting visitor limits. Still logs spend for observability (Spend Sentinel).
+  if (token && await isAdminToken(token)) {
+    await recordSpend(req, action, provider, 0);
+    return { ok: true, balance: null };
+  }
 
   if (!RELEASE_MODE) {
     // Per-IP daily cap first (anti-abuse across accounts), then deplete the signed-in account's allotment.

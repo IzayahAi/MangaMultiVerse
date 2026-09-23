@@ -79,7 +79,9 @@ export const PLAN_FEATURES = {
 
 // Effective features for a user RIGHT NOW. In demo (gate off) everything premium is off + the demo story
 // cap applies — unchanged current behavior (and no ads in demo). At launch, features come from the plan.
+// Admin is exempt from demo caps in both modes — they need to test/build without hitting visitor limits.
 export function featuresFor(user) {
+  if (user?.role === "admin") return { translate: true, voice: true, maxLangs: 12, lora: true, maxStories: null, adFree: true, fullAccess: true };
   if (!RELEASE_MODE) return { translate: TRANSLATION_ENABLED, voice: false, maxLangs: 1, lora: false, maxStories: DEMO_MAX_STORIES, adFree: true, fullAccess: false };
   return PLAN_FEATURES[user?.plan || "free"] || PLAN_FEATURES.free;
 }

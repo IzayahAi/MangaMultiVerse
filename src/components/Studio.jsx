@@ -1046,7 +1046,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
   const genChapter = async (direction = "") => {
     if (!requireAuth()) return;
     if (!story || !script?.panels?.length) { setToast({ msg: "Finish this chapter first, then add the next one.", type: "warn" }); return; }
-    if (!RELEASE_MODE && chapterCount >= DEMO_MAX_CHAPTERS) { setToast({ msg: `Demo limit: ${DEMO_MAX_CHAPTERS} chapters per story. Full access opens at launch.`, type: "warn" }); return; }
+    if (!RELEASE_MODE && user?.role !== "admin" && chapterCount >= DEMO_MAX_CHAPTERS) { setToast({ msg: `Demo limit: ${DEMO_MAX_CHAPTERS} chapters per story. Full access opens at launch.`, type: "warn" }); return; }
     const N = chapterCount + 1;
     if (!window.confirm(`Start Chapter ${N}? It creates a new chapter continuing from Chapter ${chapterNum}.`)) return;
     const prevRecap = `Chapter ${chapterNum}: ${script.chapter_summary || script.chapter_title || ""}. It ended on: ${script.chapter_end_hook || "an open cliffhanger."}`
