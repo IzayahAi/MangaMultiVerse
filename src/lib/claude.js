@@ -840,7 +840,12 @@ CAST — every panel MUST include a "cast" array: the EXACT names (as defined ab
 - If the protagonist is alone looking at a city, cast is just the protagonist. If two characters talk, both are in cast. If it's an empty landscape or an object, cast is [] (no people).
 - Use the canonical full names exactly as given (protagonist/antagonist/support names) — not "the boy", not pronouns, not nicknames. A character who only speaks off-panel is NOT in cast.
 - CRITICAL: "cast" and every dialogue "character" MUST be a name from the roster provided above (protagonist, antagonist, supporting cast). NEVER invent a new character name that is not on that roster, and always spell each name IDENTICALLY every time (character to character, panel to panel). If a scene needs an unnamed background person, describe them in "scene" but leave them out of "cast".
-- A thought or narration beat does not put its speaker in frame unless they are actually shown — match cast to what the eye sees, not who talks.`;
+- THIS RULE HAS NO EXCEPTIONS, even in a long chapter that needs a new face, a mysterious voice, a rescuer, a rival investigator, a child, a faction leader, or an offscreen collective/organization speaking as one. If the plot needs someone new, either (a) reuse a roster character in that role, or (b) leave them UNNAMED and undescribed-by-proper-noun ("a masked commander," "a voice in the dark") — never invent and name a new individual, and never give a group/collective/voice its own dialogue lines as if it were a character. The roster is the ONLY cast that exists in this world for this chapter.
+- A thought or narration beat does not put its speaker in frame unless they are actually shown — match cast to what the eye sees, not who talks.
+
+AVOID REPETITION — each panel must earn its place, not restate one already made:
+- Don't re-describe the same visual tell, character trait, or thematic line more than once or twice across the whole chapter (e.g. a villain being "motionless/serene," a magic effect "spreading/cracking," a phrase like "the blade hungers"). If a threat or trait needs to stay present, show its ESCALATION or a new angle on it, not the same sentence restated in new words.
+- If a supporting character gets a meaningful introduction, give them a further beat later in the SAME chapter before it ends — don't set someone up with real narrative weight and then drop them for the rest of the chapter with no payoff.`;
 
 export const P_SCRIPT = (s, panelCount = 10, useNarrator = false, demographic) =>
   `You are an elite manga script writer. Write Chapter 1 of "${s.title}" — make it feel like a real published chapter with a genuine story, not a slideshow.
