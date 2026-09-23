@@ -967,13 +967,16 @@ export const AGENT_STEP3 = (step1, step2) =>
   `You are a manga world architect. Build a world so specific and vivid the reader can smell it.
 Return ONLY a raw JSON object. No markdown. No code fences. Start with { end with }.
 
-Story: "${step1.title}"
+Story: "${step1.title}" — ${step1.tagline}
+Logline: ${step1.logline}
 Protagonist: ${step2.protagonist?.name} — wound: ${step2.protagonist?.wound}
+Antagonist: ${step2.antagonist?.name} — ${step2.antagonist?.motivation}
+Supporting cast: ${(step2.support_characters||[]).map(c=>`${c.name} (${c.role||""})`).join(', ') || "none yet"}
 
 One detail must be COMPLETELY ORIGINAL — something no other story has.
 Build a world with MOVING PARTS: rival factions with competing goals, and secondary story threads that can run alongside the main conflict — this is what gives later chapters more to pull from.
 
-{"setting":{"world":"world name","description":"Two punchy sensory sentences — what it looks like, what the air feels like, what the constant background sound is","unique_element":"the one thing that makes this world unlike any other — a rule, a phenomenon, a contradiction","rules":"2 specific rules of this world that DIRECTLY create story conflict","atmosphere":"the emotional undertone of the world — is it oppressive? electric? mournful?"},"central_conflict":"The core dramatic question — not just what happens but what is TRULY at stake emotionally","factions":[{"name":"group/power name","goal":"what they want","stance":"how they relate to the protagonist — ally, threat, rival, wildcard"}],"subplots":["a secondary thread with its own mini-question that can weave through chapters","a second secondary thread — a relationship, a mystery, a debt, a rivalry"],"themes":["theme one — stated as a question this story asks","theme two — the contradiction at the story's heart"],"chapter_one_hook":"Exactly what the reader sees and feels in chapter 1 — the image, the action, the gut punch that makes them unable to stop"}`;
+{"setting":{"world":"world name","description":"Two punchy sensory sentences — what it looks like, what the air feels like, what the constant background sound is","unique_element":"the one thing that makes this world unlike any other — a rule, a phenomenon, a contradiction","rules":"2 specific rules of this world that DIRECTLY create story conflict","atmosphere":"the emotional undertone of the world — is it oppressive? electric? mournful?"},"central_conflict":"The core dramatic question — not just what happens but what is TRULY at stake emotionally","factions":[{"name":"group/power name","goal":"what they want","stance":"how they relate to the protagonist — ally, threat, rival, wildcard"}],"subplots":["a secondary thread with its own mini-question that can weave through chapters","a second secondary thread — a relationship, a mystery, a debt, a rivalry"],"themes":["theme one — stated as a question this story asks","theme two — the contradiction at the story's heart"],"chapter_one_hook":"DRAMATIZE THE LOGLINE — this opening moment must PAY OFF what the logline promises, not show a disconnected image. It has to: (1) connect directly to the CENTRAL CONFLICT you just wrote, with the ANTAGONIST or their forces/threat actively present or closing in on the scene; (2) put at least one named SUPPORTING character on-page, alive and active alongside the protagonist — never the protagonist alone. Exactly what the reader sees and feels — the image, the action, the gut punch that makes them unable to stop."}`;
 
 export const AGENT_STEP4 = (step1, step2, step3) =>
   `You are a manga story architect. Build a 3-act arc where the protagonist is TRANSFORMED — not just victorious.
@@ -994,14 +997,17 @@ Also break Chapter 1 into CONCRETE PLOT EVENTS — specific things that HAPPEN (
 const REDO_FIELD_BRIEF = {
   logline: `a NEW, different two-sentence LOGLINE. Sentence 1: who the protagonist is and their world. Sentence 2: what shatters that world and the impossible choice they face.`,
   central_conflict: `a NEW, different CENTRAL CONFLICT (1-2 sentences) — the core dramatic question, what's truly at stake emotionally, not just what happens.`,
-  chapter_one_hook: `a NEW, different CHAPTER 1 HOOK — exactly what the reader sees and feels in chapter 1, the image/action/gut-punch that makes them unable to stop reading.`,
+  chapter_one_hook: `a NEW, different CHAPTER 1 HOOK that DRAMATIZES THE LOGLINE — the opening moment that pays off what the logline promises, not a disconnected image. It must connect directly to the CENTRAL CONFLICT, put the ANTAGONIST or their forces/threat actively present or closing in on the scene, and put at least one named SUPPORTING character on-page, alive and active alongside the protagonist — never the protagonist alone.`,
 };
 export const P_REDO_FIELD = (story, field) =>
   `You are a manga story editor revising ONE element of an existing story concept. Keep the title, characters, world, and genre exactly as given — only reinvent the requested element.
 Story: "${story?.title}" — ${story?.tagline}
+Logline: ${story?.logline}
 Protagonist: ${story?.protagonist?.name} — wants ${story?.protagonist?.goal}, wound: ${story?.protagonist?.wound}
 Antagonist: ${story?.antagonist?.name} — ${story?.antagonist?.motivation}
+Supporting cast: ${(story?.support_characters||[]).map(c=>`${c.name} (${c.role||""})`).join(', ') || "none"}
 World: ${story?.setting?.world} — ${story?.setting?.description}
+Central conflict: ${story?.central_conflict}
 Current version (write something genuinely DIFFERENT, not a reword of this): "${story?.[field] || ""}"
 
 Write ${REDO_FIELD_BRIEF[field] || "a new version of this element"}
