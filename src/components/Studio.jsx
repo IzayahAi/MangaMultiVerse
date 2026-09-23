@@ -1500,7 +1500,6 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     ...(!cb && !loading ? [{id:"gc", label:"✦ Design character", fn:genChar}] : []),
     ...(voices  ? [{id:"voices",  label:"🎭 Voices"}]  : []),
     ...(!voices && script && !loading ? [{id:"gv", label:"✦ Voice profiles", fn:genVoices}] : []),
-    ...(script && TRANSLATION_ENABLED ? [{id:"translate", label:"🌐 Translate"}] : []),
     // Story Brain runs in the background (updateBible after each chapter). No dedicated tab — its
     // recommendations surface in the reader view next to "+ New chapter".
     ...(Object.keys(panelImages).length > 0 ? [{id:"reader", label:"📖 Read"}] : []),
@@ -2132,7 +2131,6 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
               <Btn v="soft" onClick={generateEasterEgg} disabled={coverLoading||panelsLoading}>
                 {coverLoading ? <><Spinner size={11}/> Drawing…</> : coverArt ? "🎁 New cover gag" : "🎁 Add cover easter egg"}
               </Btn>
-              {TRANSLATION_ENABLED && <Btn v="pri" onClick={()=>setTab("translate")}>🌐 Translate →</Btn>}
             </div>
             {training && trainStatus && <div style={{marginTop:10,fontSize:11,color:C.teal}}>{trainStatus}</div>}
             {!training && (
