@@ -19,7 +19,7 @@ export async function uploadPanelArt(bytes, contentType = "image/png") {
       headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, "Content-Type": contentType },
       body: bytes,
     });
-    if (!r.ok) return null;
+    if (!r.ok) { console.warn("uploadPanelArt failed:", r.status, (await r.text().catch(() => "")).slice(0, 300)); return null; }
     return `${SB_URL}/storage/v1/object/public/panel-art/${path}`;
-  } catch { return null; }
+  } catch (e) { console.warn("uploadPanelArt threw:", e.message); return null; }
 }
