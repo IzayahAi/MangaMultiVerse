@@ -988,6 +988,25 @@ Also break Chapter 1 into CONCRETE PLOT EVENTS — specific things that HAPPEN (
 
 {"story_arc":[{"act":"Act 1 — The Wound Exposed","beats":"Establish the protagonist's ordinary world and what they desperately want. Show their wound through behavior, not backstory. The inciting incident doesn't just disrupt their plan — it forces them to confront the very thing they've been running from."},{"act":"Act 2 — The Walls Close In","beats":"Each attempt to solve the problem reveals a deeper problem. The protagonist gains something (allies, power, understanding) but loses something more important. The midpoint: they seem to win but the victory costs them their old identity. The darkest moment: they hit rock bottom and must choose to stay broken or change."},{"act":"Act 3 — Reborn","beats":"The protagonist faces the final conflict as the person they've BECOME. The antagonist forces a mirror moment — the protagonist sees what they could have been. Resolution addresses the wound, not just the plot. The ending earns its emotion."}],"chapter_one_beats":["opening image + inciting spark","the protagonist meets/clashes with another character","a discovery or reveal that raises the stakes","a complication or reversal that makes it worse","a choice the protagonist makes under pressure","the cliffhanger that ends the chapter"],"visual_style_notes":"Specific art direction for an artist: panel density (tight and claustrophobic or wide and epic?), color temperature, line weight, key visual motifs that recur, any specific manhwa/manga this resembles in feel","comparable_works":["Title — specifically why fans of this would love this story","Title — the specific element they share"]}`;
 
+// Regenerate ONE premise field (logline | central_conflict | chapter_one_hook) with a fresh alternate
+// take, keeping everything else about the story (title, cast, world, genre) fixed. Used by the Studio's
+// per-field ↻ Redo button so a creator can re-roll just one part without discarding the rest.
+const REDO_FIELD_BRIEF = {
+  logline: `a NEW, different two-sentence LOGLINE. Sentence 1: who the protagonist is and their world. Sentence 2: what shatters that world and the impossible choice they face.`,
+  central_conflict: `a NEW, different CENTRAL CONFLICT (1-2 sentences) — the core dramatic question, what's truly at stake emotionally, not just what happens.`,
+  chapter_one_hook: `a NEW, different CHAPTER 1 HOOK — exactly what the reader sees and feels in chapter 1, the image/action/gut-punch that makes them unable to stop reading.`,
+};
+export const P_REDO_FIELD = (story, field) =>
+  `You are a manga story editor revising ONE element of an existing story concept. Keep the title, characters, world, and genre exactly as given — only reinvent the requested element.
+Story: "${story?.title}" — ${story?.tagline}
+Protagonist: ${story?.protagonist?.name} — wants ${story?.protagonist?.goal}, wound: ${story?.protagonist?.wound}
+Antagonist: ${story?.antagonist?.name} — ${story?.antagonist?.motivation}
+World: ${story?.setting?.world} — ${story?.setting?.description}
+Current version (write something genuinely DIFFERENT, not a reword of this): "${story?.[field] || ""}"
+
+Write ${REDO_FIELD_BRIEF[field] || "a new version of this element"}
+Return ONLY a raw JSON object: {"value":"the new text"}`;
+
 export const P_MORE_LIKE_THIS = (story) =>
   `You are a manga story recommender. Generate 3 similar story concepts based on this story.
 Return ONLY a raw JSON object starting with { and ending with }.

@@ -5,7 +5,7 @@ import {
   askClaude, generatePanelImage, trainCharacterLora,
   generateElevenAudio, pickElevenVoice, HAS_ELEVEN, ELEVEN_VOICE_OPTIONS,
   AGENT_STEP1, AGENT_STEP2, AGENT_STEP3, AGENT_STEP4,
-  P_SCRIPT, P_SCRIPT_BATCH, P_CHAPTER, P_BIBLE_UPDATE, P_CHAR, P_VOICES, P_TRANSLATE, translateChapter, translateUpdated,
+  P_SCRIPT, P_SCRIPT_BATCH, P_CHAPTER, P_BIBLE_UPDATE, P_CHAR, P_VOICES, P_TRANSLATE, P_REDO_FIELD, translateChapter, translateUpdated,
   P_TRENDING_SEEDS, P_PERSONAL_SEEDS, P_MORE_LIKE_THIS, P_WIZARD_BUILD, P_EASTER_EGG,
 } from "../lib/claude.js";
 import { fetchTranslatedLangs, fetchTranslation, fetchChapters, fetchChapter, fetchBible } from "../lib/supabase.js";
@@ -728,6 +728,26 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     o[parts[parts.length - 1]] = val;
     return next;
   });
+  // Re-roll ONE premise field (logline | central_conflict | chapter_one_hook) via Claude, leaving the
+  // rest of the story untouched. fieldBusy tracks which one is in flight (only one at a time).
+  const [fieldBusy, setFieldBusy] = useState(null);
+  const redoField = async (field) => {
+    if (!story || fieldBusy) return;
+    if (!requireAuth()) return;
+    setFieldBusy(field);
+    try {
+      const r = await askClaude(P_REDO_FIELD(story, field), () => {});
+      if (r?.value) editStoryField(field, r.value);
+      else setToast({ msg: "Couldn't generate a new version — try again", type: "warn" });
+    } catch (e) { setToast({ msg: "Redo failed: " + e.message, type: "warn" }); }
+    finally { setFieldBusy(null); }
+  };
+  const RedoBtn = ({ field }) => (
+    <button onClick={() => redoField(field)} disabled={!!fieldBusy} title="Generate a new version"
+      style={{ fontSize: 10, padding: "2px 8px", borderRadius: 99, border: `0.5px solid ${C.border2}`, background: "transparent", color: fieldBusy === field ? C.purple : C.muted, cursor: fieldBusy ? "default" : "pointer", display: "inline-flex", alignItems: "center", gap: 4, fontFamily: "inherit" }}>
+      {fieldBusy === field ? <Spinner size={9} /> : "↻"} Redo
+    </button>
+  );
   const editPanelField = (idx, key, val) => setScript(prev => { const panels = [...prev.panels]; panels[idx] = { ...panels[idx], [key]: val }; return { ...prev, panels }; });
   const editDialogue = (pIdx, dIdx, key, val) => setScript(prev => { const panels = [...prev.panels]; const dia = [...(panels[pIdx].dialogue || [])]; dia[dIdx] = { ...dia[dIdx], [key]: val }; panels[pIdx] = { ...panels[pIdx], dialogue: dia }; return { ...prev, panels }; });
   const addDialogue = (pIdx) => setScript(prev => { const panels = [...prev.panels]; const dia = [...(panels[pIdx].dialogue || []), { character: story?.protagonist?.name || "", type: "speech", text: "" }]; panels[pIdx] = { ...panels[pIdx], dialogue: dia }; return { ...prev, panels }; });
@@ -1515,10 +1535,20 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
           <div>
             {editMode && <Sec title="Title & tagline" accent={C.purple}><div style={{background:C.card,borderRadius:9,padding:12,border:`0.5px solid ${C.border}`}}><Field label="Title" value={story.title} editing onChange={v=>editStoryField("title",v)}/><Field label="Tagline" value={story.tagline} editing onChange={v=>editStoryField("tagline",v)}/></div></Sec>}
-            <Sec title="Premise" accent={C.purple}><div style={{background:C.card,borderRadius:9,padding:12,border:`0.5px solid ${C.border}`}}><Field label="Logline" value={story.logline} editing={editMode} onChange={v=>editStoryField("logline",v)} multiline/><Field label="Central conflict" value={story.central_conflict} editing={editMode} onChange={v=>editStoryField("central_conflict",v)} multiline/>{story.themes&&!editMode&&<div style={{display:"flex",gap:5,marginTop:6,flexWrap:"wrap"}}>{(Array.isArray(story.themes)?story.themes:String(story.themes).split(",")).map((t,i)=><Tag key={i} c={C.teal}>{t.trim()}</Tag>)}</div>}</div></Sec>
+            <Sec title="Premise" accent={C.purple}><div style={{background:C.card,borderRadius:9,padding:12,border:`0.5px solid ${C.border}`}}>
+              <div style={{marginBottom:9}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}><div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em"}}>Logline</div><RedoBtn field="logline"/></div>
+                {editMode?<textarea value={story.logline||""} onChange={e=>editStoryField("logline",e.target.value)} rows={3} style={{width:"100%",padding:"6px 9px",borderRadius:6,border:`0.5px solid ${C.border2}`,background:C.surf,color:C.text,fontSize:12,fontFamily:"inherit",outline:"none",lineHeight:1.5,resize:"vertical"}}/>:<div style={{fontSize:12,color:C.text,lineHeight:1.65}}>{story.logline}</div>}
+              </div>
+              <div style={{marginBottom:9}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}><div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em"}}>Central conflict</div><RedoBtn field="central_conflict"/></div>
+                {editMode?<textarea value={story.central_conflict||""} onChange={e=>editStoryField("central_conflict",e.target.value)} rows={3} style={{width:"100%",padding:"6px 9px",borderRadius:6,border:`0.5px solid ${C.border2}`,background:C.surf,color:C.text,fontSize:12,fontFamily:"inherit",outline:"none",lineHeight:1.5,resize:"vertical"}}/>:<div style={{fontSize:12,color:C.text,lineHeight:1.65}}>{story.central_conflict}</div>}
+              </div>
+              {story.themes&&!editMode&&<div style={{display:"flex",gap:5,marginTop:6,flexWrap:"wrap"}}>{(Array.isArray(story.themes)?story.themes:String(story.themes).split(",")).map((t,i)=><Tag key={i} c={C.teal}>{t.trim()}</Tag>)}</div>}
+            </div></Sec>
             <Sec title="World" accent={C.gold}><div style={{background:C.card,borderRadius:9,padding:12,border:`0.5px solid ${C.border}`}}>{editMode&&<Field label="World name" value={story.setting?.world} editing onChange={v=>editStoryField("setting.world",v)}/>}<Field label={editMode?"Description":(story.setting?.world||"Description")} value={story.setting?.description} editing={editMode} onChange={v=>editStoryField("setting.description",v)} multiline/><Field label="Unique element" value={story.setting?.unique_element} editing={editMode} onChange={v=>editStoryField("setting.unique_element",v)} multiline/></div></Sec>
             <Sec title="3-act arc" accent={C.pink}>{story.story_arc?.map((a,ai)=><div key={ai} style={{marginBottom:7,padding:"8px 10px",background:C.card,borderRadius:8,border:`0.5px solid ${C.border}`}}><div style={{fontSize:10,color:C.pink,fontWeight:500,marginBottom:3}}>{a.act}</div>{editMode?<textarea value={a.beats||""} onChange={e=>setStory(prev=>{const arc=[...prev.story_arc];arc[ai]={...arc[ai],beats:e.target.value};return{...prev,story_arc:arc};})} rows={3} style={{width:"100%",padding:"6px 9px",borderRadius:6,border:`0.5px solid ${C.border2}`,background:C.surf,color:C.text,fontSize:11,fontFamily:"inherit",resize:"vertical"}}/>:<div style={{fontSize:11,color:C.muted,lineHeight:1.6}}>{a.beats}</div>}</div>)}</Sec>
-            <Sec title="Chapter 1 hook" accent={C.gold}>{editMode?<textarea value={story.chapter_one_hook||""} onChange={e=>editStoryField("chapter_one_hook",e.target.value)} rows={3} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`0.5px solid ${C.border2}`,background:C.surf,color:C.text,fontSize:12,fontFamily:"inherit",resize:"vertical"}}/>:<div style={{fontSize:12,color:C.text,lineHeight:1.7,padding:"9px 12px",background:C.card,borderRadius:8,borderLeft:`3px solid ${C.gold}`}}>{story.chapter_one_hook}</div>}</Sec>
+            <Sec title="Chapter 1 hook" accent={C.gold} extra={<RedoBtn field="chapter_one_hook"/>}>{editMode?<textarea value={story.chapter_one_hook||""} onChange={e=>editStoryField("chapter_one_hook",e.target.value)} rows={3} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`0.5px solid ${C.border2}`,background:C.surf,color:C.text,fontSize:12,fontFamily:"inherit",resize:"vertical"}}/>:<div style={{fontSize:12,color:C.text,lineHeight:1.7,padding:"9px 12px",background:C.card,borderRadius:8,borderLeft:`3px solid ${C.gold}`}}>{story.chapter_one_hook}</div>}</Sec>
           </div>
           <div>
             <Sec title="Protagonist" accent={C.purple}><div style={{background:C.card,borderRadius:9,padding:12,border:`0.5px solid ${C.border}`}}>{editMode?<Field label="Name" value={story.protagonist?.name} editing onChange={v=>editStoryField("protagonist.name",v)}/>:<div style={{fontSize:14,fontWeight:500,marginBottom:8,color:C.text}}>{story.protagonist?.name}<span style={{fontSize:11,color:C.muted,fontWeight:400}}> · {story.protagonist?.age}</span></div>}<Field label="Appearance" value={story.protagonist?.appearance} editing={editMode} onChange={v=>editStoryField("protagonist.appearance",v)} multiline/><Field label="Personality" value={story.protagonist?.personality} editing={editMode} onChange={v=>editStoryField("protagonist.personality",v)} multiline/><Field label="Inner wound" value={story.protagonist?.wound} editing={editMode} onChange={v=>editStoryField("protagonist.wound",v)} multiline/><Field label="Wants" value={story.protagonist?.goal} editing={editMode} onChange={v=>editStoryField("protagonist.goal",v)}/><Field label="Actually needs" value={story.protagonist?.need} editing={editMode} onChange={v=>editStoryField("protagonist.need",v)}/></div></Sec>

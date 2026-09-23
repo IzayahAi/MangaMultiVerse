@@ -34,10 +34,10 @@ export const Field = ({label,value,editing,onChange,multiline}) => {
   return value ? <div style={{marginBottom:9}}><div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:2}}>{label}</div><div style={{fontSize:12,color:C.text,lineHeight:1.65}}>{value}</div></div> : null;
 };
 
-export const Sec = ({title,accent,children}) => {
+export const Sec = ({title,accent,children,extra}) => {
   const C = useTheme();
   const a = accent || C.purple;
-  return <div style={{marginBottom:16}}><div style={{display:"flex",alignItems:"center",gap:7,marginBottom:8}}><div style={{width:3,height:14,borderRadius:99,background:a}}/><span style={{fontSize:12,fontWeight:500,color:C.text}}>{title}</span></div>{children}</div>;
+  return <div style={{marginBottom:16}}><div style={{display:"flex",alignItems:"center",gap:7,marginBottom:8}}><div style={{width:3,height:14,borderRadius:99,background:a}}/><span style={{fontSize:12,fontWeight:500,color:C.text}}>{title}</span>{extra&&<span style={{marginLeft:"auto"}}>{extra}</span>}</div>{children}</div>;
 };
 
 export const Spinner = ({size=16}) => {
