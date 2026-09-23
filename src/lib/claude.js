@@ -1013,6 +1013,20 @@ Current version (write something genuinely DIFFERENT, not a reword of this): "${
 Write ${REDO_FIELD_BRIEF[field] || "a new version of this element"}
 Return ONLY a raw JSON object: {"value":"the new text"}`;
 
+// Add ONE new supporting character to an existing story, fitting the given hint (e.g. "Kenzo, a clan
+// elder"). Keeps title/protagonist/antagonist/world fixed; only invents the new character. Used by the
+// Studio's "+ Add character" control so a creator can grow the cast after initial generation.
+export const P_ADD_CHARACTER = (story, hint) =>
+  `You are a manga character designer adding ONE new supporting character to an existing story. Keep the title, protagonist, antagonist, world, and genre exactly as given — this character must fit naturally into that world and give the cast more RANGE (a want of their own, a secret, a distinct look).
+Story: "${story?.title}" — ${story?.tagline}
+World: ${story?.setting?.world} — ${story?.setting?.description}
+Protagonist: ${story?.protagonist?.name} — ${story?.protagonist?.personality}
+Antagonist: ${story?.antagonist?.name} — ${story?.antagonist?.role}
+Existing supporting cast (this new character must have a DISTINCT name — no duplicates or near-duplicate spellings): ${(story?.support_characters||[]).map(c=>c.name).join(', ') || "none yet"}
+What this character should be: ${hint}
+
+Return ONLY a raw JSON object: {"name":"full name, distinct from every existing character","epithet":"a short manga-style alias or title, 1-3 words, or empty if none fits","role":"their relationship to the protagonist (mentor, rival, elder, ally, handler…)","appearance":"specific visual — hair color and style, eye color, build, clothing, one distinctive mark","want":"what THEY are chasing for their own reasons","secret":"something they hide that could complicate the story","hook":"the one thing that makes them memorable"}`;
+
 export const P_MORE_LIKE_THIS = (story) =>
   `You are a manga story recommender. Generate 3 similar story concepts based on this story.
 Return ONLY a raw JSON object starting with { and ending with }.

@@ -5,7 +5,7 @@ import {
   askClaude, generatePanelImage, trainCharacterLora,
   generateElevenAudio, pickElevenVoice, HAS_ELEVEN, ELEVEN_VOICE_OPTIONS,
   AGENT_STEP1, AGENT_STEP2, AGENT_STEP3, AGENT_STEP4,
-  P_SCRIPT, P_SCRIPT_BATCH, P_CHAPTER, P_BIBLE_UPDATE, P_CHAR, P_VOICES, P_TRANSLATE, P_REDO_FIELD, translateChapter, translateUpdated,
+  P_SCRIPT, P_SCRIPT_BATCH, P_CHAPTER, P_BIBLE_UPDATE, P_CHAR, P_VOICES, P_TRANSLATE, P_REDO_FIELD, P_ADD_CHARACTER, translateChapter, translateUpdated,
   P_TRENDING_SEEDS, P_PERSONAL_SEEDS, P_MORE_LIKE_THIS, P_WIZARD_BUILD, P_EASTER_EGG,
 } from "../lib/claude.js";
 import { fetchTranslatedLangs, fetchTranslation, fetchChapters, fetchChapter, fetchBible } from "../lib/supabase.js";
@@ -748,6 +748,25 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
       {fieldBusy === field ? <Spinner size={9} /> : "↻"} Redo
     </button>
   );
+  // Grow the cast after initial generation — e.g. "Kenzo, a clan elder". Appends one AI-designed
+  // character to story.support_characters; everything else about the story is untouched.
+  const [charHint, setCharHint] = useState("");
+  const [addingChar, setAddingChar] = useState(false);
+  const addCharacter = async () => {
+    const hint = charHint.trim();
+    if (!hint || addingChar) return;
+    if (!requireAuth()) return;
+    setAddingChar(true);
+    try {
+      const r = await askClaude(P_ADD_CHARACTER(story, hint), () => {});
+      if (r?.name) {
+        setStory(prev => ({ ...prev, support_characters: [...(prev.support_characters || []), r] }));
+        setCharHint("");
+        setToast({ msg: `${r.name} added to the cast ✓`, type: "ok" });
+      } else setToast({ msg: "Couldn't design that character — try again", type: "warn" });
+    } catch (e) { setToast({ msg: "Add character failed: " + e.message, type: "warn" }); }
+    finally { setAddingChar(false); }
+  };
   const editPanelField = (idx, key, val) => setScript(prev => { const panels = [...prev.panels]; panels[idx] = { ...panels[idx], [key]: val }; return { ...prev, panels }; });
   const editDialogue = (pIdx, dIdx, key, val) => setScript(prev => { const panels = [...prev.panels]; const dia = [...(panels[pIdx].dialogue || [])]; dia[dIdx] = { ...dia[dIdx], [key]: val }; panels[pIdx] = { ...panels[pIdx], dialogue: dia }; return { ...prev, panels }; });
   const addDialogue = (pIdx) => setScript(prev => { const panels = [...prev.panels]; const dia = [...(panels[pIdx].dialogue || []), { character: story?.protagonist?.name || "", type: "speech", text: "" }]; panels[pIdx] = { ...panels[pIdx], dialogue: dia }; return { ...prev, panels }; });
@@ -1554,6 +1573,11 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
             <Sec title="Protagonist" accent={C.purple}><div style={{background:C.card,borderRadius:9,padding:12,border:`0.5px solid ${C.border}`}}>{editMode?<Field label="Name" value={story.protagonist?.name} editing onChange={v=>editStoryField("protagonist.name",v)}/>:<div style={{fontSize:14,fontWeight:500,marginBottom:8,color:C.text}}>{story.protagonist?.name}<span style={{fontSize:11,color:C.muted,fontWeight:400}}> · {story.protagonist?.age}</span></div>}<Field label="Appearance" value={story.protagonist?.appearance} editing={editMode} onChange={v=>editStoryField("protagonist.appearance",v)} multiline/><Field label="Personality" value={story.protagonist?.personality} editing={editMode} onChange={v=>editStoryField("protagonist.personality",v)} multiline/><Field label="Inner wound" value={story.protagonist?.wound} editing={editMode} onChange={v=>editStoryField("protagonist.wound",v)} multiline/><Field label="Wants" value={story.protagonist?.goal} editing={editMode} onChange={v=>editStoryField("protagonist.goal",v)}/><Field label="Actually needs" value={story.protagonist?.need} editing={editMode} onChange={v=>editStoryField("protagonist.need",v)}/></div></Sec>
             <Sec title="Antagonist" accent={C.pink}><div style={{background:C.card,borderRadius:9,padding:12,border:`0.5px solid ${C.border}`}}>{editMode?<Field label="Name" value={story.antagonist?.name} editing onChange={v=>editStoryField("antagonist.name",v)}/>:<div style={{fontSize:14,fontWeight:500,marginBottom:8,color:C.text}}>{story.antagonist?.name}</div>}<Field label="Role" value={story.antagonist?.role} editing={editMode} onChange={v=>editStoryField("antagonist.role",v)}/><Field label="Motivation" value={story.antagonist?.motivation} editing={editMode} onChange={v=>editStoryField("antagonist.motivation",v)} multiline/><Field label="Mirrors protagonist" value={story.antagonist?.mirror} editing={editMode} onChange={v=>editStoryField("antagonist.mirror",v)} multiline/></div></Sec>
             {story.support_characters?.map(c=><div key={c.name} style={{marginBottom:6,padding:"8px 10px",background:C.card,border:`0.5px solid ${C.border}`,borderRadius:8}}><span style={{fontSize:12,fontWeight:500,color:C.text}}>{c.name}</span><span style={{fontSize:11,color:C.muted}}> · {c.role}</span><div style={{fontSize:11,color:C.muted,marginTop:2}}>{c.hook}</div></div>)}
+            <div style={{display:"flex",gap:6,marginBottom:12}}>
+              <input value={charHint} onChange={e=>setCharHint(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addCharacter();}} placeholder="+ Add character — e.g. 'Kenzo, a clan elder'" disabled={addingChar}
+                style={{flex:1,padding:"7px 10px",borderRadius:7,border:`0.5px solid ${C.border2}`,background:C.surf,color:C.text,fontSize:11,fontFamily:"inherit",outline:"none"}}/>
+              <Btn v="soft" onClick={addCharacter} disabled={addingChar||!charHint.trim()} sx={{fontSize:11,padding:"7px 12px"}}>{addingChar?<Spinner size={11}/>:"+ Add"}</Btn>
+            </div>
             <Sec title="Visual style" accent={C.muted}>{editMode?<textarea value={typeof story.visual_style_notes==="object"?Object.values(story.visual_style_notes).join(" · "):(story.visual_style_notes||"")} onChange={e=>editStoryField("visual_style_notes",e.target.value)} rows={3} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`0.5px solid ${C.border2}`,background:C.surf,color:C.text,fontSize:12,fontFamily:"inherit",resize:"vertical"}}/>:<div style={{fontSize:12,color:C.muted,lineHeight:1.7,fontStyle:"italic"}}>{typeof story.visual_style_notes === "object" ? Object.values(story.visual_style_notes).join(" · ") : story.visual_style_notes}</div>}</Sec>
           </div>
         </div>
