@@ -9,8 +9,14 @@
 const SB_URL = process.env.SUPABASE_URL;
 const SB_ANON = process.env.SUPABASE_ANON_KEY;
 
+// TEMP DIAGNOSTIC: also returns _debug (last failure reason) so a caller can surface it in the response
+// while tracking down why production uploads were failing when a direct curl to the same bucket worked.
+// Remove the _debug plumbing once confirmed fixed.
+let _lastDebug = null;
+export function _storageDebug() { return _lastDebug; }
+
 export async function uploadPanelArt(bytes, contentType = "image/png") {
-  if (!SB_URL || !SB_ANON || !bytes?.length) return null;
+  if (!SB_URL || !SB_ANON || !bytes?.length) { _lastDebug = `precondition failed: SB_URL=${!!SB_URL} SB_ANON=${!!SB_ANON} bytesLen=${bytes?.length}`; return null; }
   const ext = contentType.includes("jpeg") ? "jpg" : contentType.includes("webp") ? "webp" : "png";
   const path = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
   try {
@@ -19,7 +25,8 @@ export async function uploadPanelArt(bytes, contentType = "image/png") {
       headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, "Content-Type": contentType },
       body: bytes,
     });
-    if (!r.ok) { console.warn("uploadPanelArt failed:", r.status, (await r.text().catch(() => "")).slice(0, 300)); return null; }
+    if (!r.ok) { _lastDebug = `HTTP ${r.status}: ${(await r.text().catch(() => "")).slice(0, 300)}`; return null; }
+    _lastDebug = null;
     return `${SB_URL}/storage/v1/object/public/panel-art/${path}`;
-  } catch (e) { console.warn("uploadPanelArt threw:", e.message); return null; }
+  } catch (e) { _lastDebug = `threw: ${e.message}`; return null; }
 }
