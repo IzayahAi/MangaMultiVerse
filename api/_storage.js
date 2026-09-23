@@ -15,8 +15,22 @@ const SB_ANON = process.env.SUPABASE_ANON_KEY;
 let _lastDebug = null;
 export function _storageDebug() { return _lastDebug; }
 
+// TEMP DIAGNOSTIC: find the first character (if any) in a header-value candidate that would break the
+// Fetch API's ByteString coercion (code point > 255) — pinpoints exactly which value is bad instead of
+// guessing from Node's generic "index N" error.
+function _findBadChar(label, s) {
+  if (!s) return null;
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    if (code > 255) return `${label}[${i}]=U+${code.toString(16)} ('${s[i]}') in a string of length ${s.length}`;
+  }
+  return null;
+}
+
 export async function uploadPanelArt(bytes, contentType = "image/png") {
   if (!SB_URL || !SB_ANON || !bytes?.length) { _lastDebug = `precondition failed: SB_URL=${!!SB_URL} SB_ANON=${!!SB_ANON} bytesLen=${bytes?.length}`; return null; }
+  const bad = _findBadChar("SB_ANON", SB_ANON) || _findBadChar("SB_URL", SB_URL) || _findBadChar("contentType", contentType);
+  if (bad) { _lastDebug = `bad header char found: ${bad}`; return null; }
   const ext = contentType.includes("jpeg") ? "jpg" : contentType.includes("webp") ? "webp" : "png";
   const path = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
   try {
