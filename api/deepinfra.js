@@ -31,7 +31,10 @@ export default async function handler(req, res) {
   };
   const styleModifier = STYLE_PROMPTS[style] || STYLE_PROMPTS['JP-EN'];
 
-  // Same light cleanup the Together proxy uses — keep prompts short + tame.
+  // Same light cleanup the Together proxy uses. 300 chars was cutting the incoming prompt down to
+  // just its opening style preamble before it ever reached the actual scene/character description
+  // (see claude.js's generatePanelImage ordering note) — every panel rendered as a generic face
+  // close-up as a result. 900 chars comfortably covers scene+characters.
   const cleanPrompt = (prompt || '')
     .replace(/blood(y|ied)?/gi, 'dramatic')
     .replace(/gore|gory/gi, 'intense')
@@ -40,7 +43,7 @@ export default async function handler(req, res) {
     .replace(/nude|naked/gi, 'clothed')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 300);
+    .slice(0, 900);
   const fullPrompt = `${cleanPrompt}, ${styleModifier}, high quality, no text`;
 
   const TIMEOUT_MS = 30000;

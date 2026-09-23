@@ -30,7 +30,10 @@ export default async function handler(req, res) {
 
   const styleModifier = STYLE_PROMPTS[style] || STYLE_PROMPTS['JP-EN'];
 
-  // Keep prompt clean and short — long prompts trigger 400 errors
+  // Keep prompt clean — 200 chars was cutting the incoming prompt down to just its opening style
+  // preamble, before it ever reached the actual scene/character description (see claude.js's
+  // generatePanelImage ordering note). 900 chars comfortably covers scene+characters and is still
+  // well under limits that trigger Together 400s.
   const cleanPrompt = (prompt || '')
     .replace(/blood(y|ied)?/gi, 'dramatic')
     .replace(/gore|gory/gi, 'intense')
@@ -41,7 +44,7 @@ export default async function handler(req, res) {
     .replace(/hell(?!o)/gi, 'dark realm')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 200); // Truncate to avoid 400 errors from overly long prompts
+    .slice(0, 900);
 
   const fullPrompt = `${cleanPrompt}, ${styleModifier}, high quality, no text`;
 
