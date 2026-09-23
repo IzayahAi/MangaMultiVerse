@@ -662,29 +662,37 @@ export async function generatePanelImage(panelDescription, characterContext, sty
         await new Promise(r => setTimeout(r, 1000));
       }
     }
-    // fall through to the Together (/api/image) last resort below
+    // fall through to DeepInfra below
   }
 
-  // Together is reached only through the authenticated /api/image proxy (it picks the model server-side).
-  // Fallback order: FLUX first so a chapter that started on Fal-FLUX keeps the SAME model's look
-  // when some panels fall through here — mixing SDXL mid-chapter gives one character two faces.
-  // SDXL is the last resort (different latent space; same seed produces an unrelated image).
-  const MODELS = [
-    { id: 'black-forest-labs/FLUX.1-schnell-Free',     steps: 4,  neg: false }, // serverless (plain FLUX.1-schnell now needs a dedicated endpoint)
-    { id: 'stabilityai/stable-diffusion-xl-base-1.0', steps: 24, neg: true },
-  ];
-
-  const MAX_ATTEMPTS = 5;
   const TIMEOUT_MS = 30000; // abort a hung request instead of waiting forever (image service can stall)
-  let modelIdx = 0;
+
+  // ── DeepInfra FLUX-schnell (/api/deepinfra) is now PRIMARY (2026-09-23 — funded account, side-by-side
+  //    comparison showed it rendering the actual scene/environment better than Together's Lightning model,
+  //    with no text-glitch artifacts, at ~3x lower cost). No aggressive input filter either.
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    const res = await fetch('/api/deepinfra', { method: 'POST', headers: apiHeaders(chargeAction()), body: JSON.stringify({ prompt, style }), signal: ctrl.signal });
+    clearTimeout(timer);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.b64) return `data:image/png;base64,${data.b64}`;
+      if (data.url) return data.url;
+    } else {
+      console.warn(`DeepInfra ${res.status} — falling through to Together`);
+    }
+  } catch (e) { console.warn('DeepInfra failed, falling through to Together:', e.message); }
+
+  // ── FALLBACK: Together (/api/image, picks the model server-side) — used only when DeepInfra is
+  //    unavailable/erroring. chargeAction() runs 'free' if DeepInfra already charged this panel, or
+  //    'panel' if it never did, so the panel is still charged/counted exactly once across providers.
+  const MAX_ATTEMPTS = 5;
   let timeouts = 0;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
-      // Together is now the PRIMARY provider (Fal demoted), so the first call charges 'panel' (deducts the
-      // credit + counts the per-IP demo cap); retries/failover run 'free'. chargeAction() flips after the
-      // first call, so a logical panel is charged/counted exactly once across all providers.
       const res = await fetch('/api/image', { method: 'POST', headers: apiHeaders(chargeAction()), body: JSON.stringify({ prompt, style }), signal: ctrl.signal });
       clearTimeout(timer);
       if (res.ok) {
@@ -704,56 +712,33 @@ export async function generatePanelImage(panelDescription, characterContext, sty
       if (res.status === 429) {
         // OUR per-IP demo cap (not a provider throttle) — surface the "demo limit" toast, don't retry into blanks.
         if (errBody.includes('demo_limit')) { try { _onBalance?.("demo_limit"); } catch {} return null; }
-        // Provider rate limit — honor the reset header, add jitter, stay on the same model
+        // Provider rate limit — honor the reset header, add jitter
         const wait = Math.max(resetSec > 0 ? resetSec * 1000 : 3000, 2000) + Math.floor(Math.random() * 1500);
         console.warn(`Image API 429 — backing off ${Math.round(wait)}ms (attempt ${attempt+1}/${MAX_ATTEMPTS})`);
         await new Promise(r => setTimeout(r, wait));
         continue;
       }
       if (res.status >= 500) {
-        // Server error — try the fallback model, short backoff
         console.error(`Image API ${res.status} body:`, errBody.slice(0, 200));
-        modelIdx++;
         await new Promise(r => setTimeout(r, 4000));
         continue;
       }
-      // Other client error (400/401/422/etc): this model won't serve this request
-      // (unavailable model, or prompt flagged). Try the next model before giving up.
+      // Other client error (400/401/422/etc) — the proxy already tries its own model fallbacks
+      // server-side, so a non-5xx here means give up rather than hammer the same request.
       console.error(`Image API ${res.status} body:`, errBody.slice(0, 300));
-      if (modelIdx < MODELS.length - 1) { modelIdx++; await new Promise(r => setTimeout(r, 1200)); continue; }
-      break; // Together models exhausted → try the DeepInfra fallback below
+      break;
     } catch(e) {
       clearTimeout(timer);
       const timedOut = e.name === "AbortError";
       console.warn(`Image generation attempt ${attempt+1} ${timedOut ? "timed out" : "failed"}:`, e.message);
       if (timedOut) {
-        // The service is hanging. Try the fallback model once; if it also hangs, give up fast
-        // so the UI can surface "service unavailable" instead of stalling for minutes.
+        // The service is hanging. Give up fast after 2 timeouts instead of stalling for minutes.
         timeouts++;
-        modelIdx++;
-        if (timeouts >= 2) break; // Together hanging → try the DeepInfra fallback below
+        if (timeouts >= 2) break;
       }
       await new Promise(r => setTimeout(r, 2000));
     }
   }
-
-  // ── FALLBACK: DeepInfra FLUX-schnell (/api/deepinfra) — cheap, no aggressive input filter. Last resort
-  //    once Together is exhausted/unavailable. Best-effort: no-ops cleanly if DEEPINFRA_API_KEY isn't set.
-  //    chargeAction() runs 'free' if Together already charged this panel, or 'panel' if it never did
-  //    (e.g. Together was fully unreachable) — so the panel is still charged/counted exactly once.
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-    const res = await fetch('/api/deepinfra', { method: 'POST', headers: apiHeaders(chargeAction()), body: JSON.stringify({ prompt, style }), signal: ctrl.signal });
-    clearTimeout(timer);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.b64) return `data:image/png;base64,${data.b64}`;
-      if (data.url) return data.url;
-    } else {
-      console.warn(`DeepInfra fallback ${res.status}`);
-    }
-  } catch (e) { console.warn('DeepInfra fallback failed:', e.message); }
 
   return null;
 }
