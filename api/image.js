@@ -30,10 +30,11 @@ export default async function handler(req, res) {
 
   const styleModifier = STYLE_PROMPTS[style] || STYLE_PROMPTS['JP-EN'];
 
-  // Keep prompt clean — 200 chars was cutting the incoming prompt down to just its opening style
-  // preamble, before it ever reached the actual scene/character description (see claude.js's
-  // generatePanelImage ordering note). 900 chars comfortably covers scene+characters and is still
-  // well under limits that trigger Together 400s.
+  // Keep prompt clean — a busy panel (long scene + multiple characters) can run 1800+ chars before the
+  // style/quality block even starts (see claude.js's generatePanelImage). 900 was still truncating style
+  // and color cues away on busier panels — this is what caused inconsistent look/color between panels.
+  // 1800 covers realistic worst-case scene+character text; confirmed safe empirically (a live test prompt
+  // at 1848 chars round-tripped fine through DeepInfra, and Together's providers support well beyond this).
   const cleanPrompt = (prompt || '')
     .replace(/blood(y|ied)?/gi, 'dramatic')
     .replace(/gore|gory/gi, 'intense')
@@ -44,7 +45,7 @@ export default async function handler(req, res) {
     .replace(/hell(?!o)/gi, 'dark realm')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 900);
+    .slice(0, 1800);
 
   const fullPrompt = `${cleanPrompt}, ${styleModifier}, high quality, no text`;
 
