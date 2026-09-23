@@ -112,7 +112,7 @@ export default async function handler(req, res) {
           if (imgRes.ok) {
             const buffer = Buffer.from(await imgRes.arrayBuffer());
             const uploaded = await uploadPanelArt(buffer, 'image/png');
-            return res.status(200).json(uploaded ? { url: uploaded } : { b64: buffer.toString('base64') });
+            return res.status(200).json(uploaded ? { url: uploaded } : { b64: buffer.toString('base64'), _debug: _storageDebug() });
           }
         } catch {}
         return res.status(200).json({ url: imageUrl });
