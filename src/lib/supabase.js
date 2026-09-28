@@ -364,6 +364,17 @@ export async function deleteBrainNote(id, token) {
   catch (e) { console.warn("deleteBrainNote failed:", e.message); return false; }
 }
 
+// Demo signup cap (db/signup_cap.sql — hard-enforced there too, this is just for a clean UI message
+// before attempting signup instead of surfacing the raw trigger-rejection error). Best-effort: any
+// failure (RPC not armed yet) reports slots open so it never blocks signup on its own.
+export async function checkSignupSlots() {
+  if (DEMO) return 50;
+  try {
+    const r = await sb.rpc("/rest/v1/rpc/signup_slots_remaining", {});
+    return typeof r === "number" ? r : 50;
+  } catch { return 50; }
+}
+
 export async function signUp(email, password, username) {
   if (DEMO) return { user:{ id:`demo_${Date.now()}`, email, username }, token:"demo" };
   const r = await sb.rpc("/auth/v1/signup", { email, password, data:{ username } });

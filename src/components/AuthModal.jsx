@@ -1,5 +1,5 @@
-﻿import { useState } from "react";
-import { DEMO, signUp, signIn } from "../lib/supabase.js";
+﻿import { useState, useEffect } from "react";
+import { DEMO, signUp, signIn, checkSignupSlots } from "../lib/supabase.js";
 import { Btn, Spinner } from "./UI.jsx";
 import { useTheme } from "../ThemeContext.jsx";
 
@@ -8,13 +8,22 @@ export default function AuthModal({onAuth, onClose}) {
   const [mode,setMode] = useState("signup");
   const [email,setEmail]=useState(""); const [pw,setPw]=useState(""); const [uname,setUname]=useState("");
   const [loading,setLoading]=useState(false); const [err,setErr]=useState("");
+  // Demo is capped at 50 accounts (db/signup_cap.sql — hard-enforced server-side; this just avoids
+  // showing a raw trigger-rejection error). null = still checking, so the form doesn't flash closed.
+  const [slotsLeft,setSlotsLeft] = useState(null);
+  useEffect(() => { checkSignupSlots().then(setSlotsLeft); }, []);
+  const demoFull = slotsLeft === 0;
 
   const submit = async e => {
     e.preventDefault(); setErr(""); setLoading(true);
     try {
       const session = mode==="signup" ? await signUp(email,pw,uname) : await signIn(email,pw);
       onAuth(session, pw);
-    } catch(e){ console.error("Auth error:", e); setErr(e.message || "Network error — check console"); } finally { setLoading(false); }
+    } catch(e){
+      console.error("Auth error:", e);
+      const full = mode==="signup" && /full|P0001/i.test(e.message||"");
+      setErr(full ? "Demo is full — 50/50 accounts. Thanks for your interest, check back after launch." : (e.message || "Network error — check console"));
+    } finally { setLoading(false); }
   };
 
   const inp = {width:"100%",padding:"9px 12px",borderRadius:8,border:`0.5px solid ${C.border2}`,background:C.card,color:C.text,fontSize:13,fontFamily:"inherit",outline:"none"};
@@ -33,6 +42,12 @@ export default function AuthModal({onAuth, onClose}) {
           <span style={{color:C.teal,fontWeight:600}}>Free account.</span> It's only so your manga saves to you and is here when you come back — no payment, nothing to buy.
         </div>
         {DEMO && <div style={{padding:"8px 12px",borderRadius:7,background:C.gold+"18",border:`0.5px solid ${C.gold}44`,marginBottom:14,fontSize:11,color:C.gold}}>⚡ Demo mode — any email & password works</div>}
+        {mode==="signup" && demoFull ? (
+          <div style={{padding:"14px 12px",borderRadius:8,background:"#e24b4a18",border:"0.5px solid #e24b4a44",marginBottom:4,fontSize:12.5,color:C.text,lineHeight:1.6,textAlign:"center"}}>
+            <div style={{fontWeight:600,marginBottom:4}}>Demo is full — 50/50 accounts</div>
+            Thanks for your interest — check back after launch, or <button onClick={()=>{setMode("login");setErr("");}} style={{background:"none",border:"none",padding:0,color:C.purple,textDecoration:"underline",cursor:"pointer",fontFamily:"inherit",fontSize:"inherit"}}>sign in</button> if you already have an account.
+          </div>
+        ) : (
         <form onSubmit={submit}>
           {mode==="signup" && <div style={{marginBottom:12}}><div style={{fontSize:11,color:C.muted,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.06em"}}>Username</div><input value={uname} onChange={e=>setUname(e.target.value)} placeholder="your_username" required style={inp}/></div>}
           <div style={{marginBottom:12}}><div style={{fontSize:11,color:C.muted,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.06em"}}>Email</div><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" required autoComplete="email" style={inp}/></div>
@@ -40,6 +55,7 @@ export default function AuthModal({onAuth, onClose}) {
           {err && <div style={{fontSize:12,color:"#e24b4a",padding:"7px 10px",background:"#e24b4a18",borderRadius:7,marginBottom:12}}>{err}</div>}
           <Btn type="submit" v="pri" disabled={loading} sx={{width:"100%",padding:"10px 0",fontSize:13}}>{loading?<Spinner size={14}/>:mode==="login"?"Sign in →":"Create account →"}</Btn>
         </form>
+        )}
         <button onClick={onClose} style={{display:"block",width:"100%",marginTop:12,padding:"7px 0",background:"transparent",border:"none",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Just browsing — maybe later</button>
       </div>
     </div>
