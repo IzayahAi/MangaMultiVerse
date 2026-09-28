@@ -254,6 +254,29 @@ export async function resolveInboxItem(id, status, token) {
   catch (e) { console.warn("resolveInboxItem:", e.message); return false; }
 }
 
+// ── Mr. K to-do list: the founder's cross-device tasks; Mr. K can add from a session (see db/cos_todos.sql).
+export async function addTodo(text, source = "ui", token) {
+  const t = String(text || "").trim();
+  if (DEMO || !t) return null;
+  try { const rows = await sb.post("cos_todos", { text: t.slice(0, 2000), source }, token); return Array.isArray(rows) ? rows[0] : rows; }
+  catch (e) { console.warn("addTodo:", e.message); return null; }
+}
+export async function fetchTodos(token) {
+  if (DEMO || !token) return [];
+  try { const rows = await sb.get("cos_todos", `?select=*&order=done.asc,created_at.desc&limit=500`, token); return Array.isArray(rows) ? rows : []; }
+  catch (e) { console.warn("fetchTodos:", e.message); return []; }
+}
+export async function setTodoDone(id, done, token) {
+  if (DEMO || !token || !id) return false;
+  try { await sb.patch("cos_todos", id, { done }, token); return true; }
+  catch (e) { console.warn("setTodoDone:", e.message); return false; }
+}
+export async function deleteTodo(id, token) {
+  if (DEMO || !token || !id) return false;
+  try { await sb.del("cos_todos", id, token); return true; }
+  catch (e) { console.warn("deleteTodo:", e.message); return false; }
+}
+
 // ── Mr. K daily logs: a dated record of each session (see db/cos_daily_logs.sql).
 export async function addDailyLog(title, body, source = "ui", token, logDate) {
   if (DEMO || !body) return false;
