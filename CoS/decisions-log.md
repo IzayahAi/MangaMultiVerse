@@ -2,6 +2,20 @@
 
 _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
+## 2026-09-27
+
+- **Public demo hard-capped at 50 accounts** — before sharing the link publicly on LinkedIn. Enforced at
+  the DATABASE level (`db/signup_cap.sql`, commit `9c5fe10`), not just client-side, so it can't be
+  bypassed by hitting Supabase Auth directly; the 51st signup is rejected and its transaction rolled back
+  (no orphan auth row). A `signup_slots_remaining()` RPC drives a friendly "Demo is full — 50/50" panel
+  in the sign-up modal. Verified live. Existing accounts keep full access; only new signups past 50 are
+  blocked. Raise/remove later by editing the `50` in both SQL functions and re-running. — Mr. K
+
+- **Demo link card + LinkedIn post reframed as a LIMITED beta** — card bottom line changed from "open to
+  everyone" to "Limited beta · first 50 creators" (artifact v4, shareable PNG regenerated), and the
+  LinkedIn caption leads with "first 50 creators get in, free to read." The scarcity framing pairs with
+  the new hard cap. — Mr. K
+
 ## 2026-09-23
 
 - **Panel art quality root-caused and fixed, twice.** First: panels were rendering as extreme face

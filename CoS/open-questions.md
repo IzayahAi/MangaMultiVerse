@@ -51,10 +51,12 @@ and verified live this session. Only a couple of founder-side items remain:_
 - **Confirm a funded Anthropic budget + a spend alert** (Anthropic text is the other real burn).
 - **Run the incognito smoke test**, then announce: guest read → sign up → create → Together render →
   publish → ⚑ report → admin hide.
-- **Decide the account-count ceiling** (still open). No `DEMO_MAX_USERS`; open signups are bounded by the
-  per-IP cap + the 500-credit per-account allotment + free Together images. Options: rely on that + the
-  Spend Sentinel (lowest effort); add a hard signup cap; or lower `DEMO_CREDITS`. Recommendation: ship on
-  the per-IP cap + budget alert; only add a hard cap if burn looks scary.
+- ✅ **Account-count ceiling — RESOLVED 2026-09-27: hard-capped at 50.** Before sharing the demo link
+  publicly (LinkedIn), decided on a firm 50-account limit. Enforced at the DB level (`db/signup_cap.sql`
+  replaces `handle_new_user()` to raise once 50 profiles exist — rolls back the auth.users row too, no
+  orphans), so it can't be bypassed client-side. Public `signup_slots_remaining()` RPC drives a clean
+  "Demo is full — 50/50" message in AuthModal. Verified live (RPC returned 46 = 4 accounts, cap 50).
+  Commit `9c5fe10`. To raise/remove later: edit the `50` in both functions and re-run the SQL.
 - Have the beta policies **reviewed** before scaling / turning on billing.
 - Optional: turn on the support inbox's Gmail **auto-reply** (draft provided in-session).
 
