@@ -207,7 +207,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
         if (val === null || val === undefined) return val;
         if (typeof val !== "object") return val;
         const strs = Object.values(val).filter(v => typeof v === "string");
-        return strs.length ? strs.join(" · ") : Object.values(val).map(v => typeof v === "object" ? Object.values(v).join(" ") : String(v)).join(" · ");
+        return strs.length ? strs.join(" · ") : Object.values(val).map(v => (v && typeof v === "object") ? Object.values(v).join(" ") : String(v)).join(" · ");
       };
       const fixCharacter = c => {
         if (!c || typeof c !== "object") return c;
@@ -1577,7 +1577,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
                 style={{flex:1,padding:"7px 10px",borderRadius:7,border:`0.5px solid ${C.border2}`,background:C.surf,color:C.text,fontSize:11,fontFamily:"inherit",outline:"none"}}/>
               <Btn v="soft" onClick={addCharacter} disabled={addingChar||!charHint.trim()} sx={{fontSize:11,padding:"7px 12px"}}>{addingChar?<Spinner size={11}/>:"+ Add"}</Btn>
             </div>
-            <Sec title="Visual style" accent={C.muted}>{editMode?<textarea value={typeof story.visual_style_notes==="object"?Object.values(story.visual_style_notes).join(" · "):(story.visual_style_notes||"")} onChange={e=>editStoryField("visual_style_notes",e.target.value)} rows={3} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`0.5px solid ${C.border2}`,background:C.surf,color:C.text,fontSize:12,fontFamily:"inherit",resize:"vertical"}}/>:<div style={{fontSize:12,color:C.muted,lineHeight:1.7,fontStyle:"italic"}}>{typeof story.visual_style_notes === "object" ? Object.values(story.visual_style_notes).join(" · ") : story.visual_style_notes}</div>}</Sec>
+            <Sec title="Visual style" accent={C.muted}>{editMode?<textarea value={story.visual_style_notes&&typeof story.visual_style_notes==="object"?Object.values(story.visual_style_notes).join(" · "):(story.visual_style_notes||"")} onChange={e=>editStoryField("visual_style_notes",e.target.value)} rows={3} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`0.5px solid ${C.border2}`,background:C.surf,color:C.text,fontSize:12,fontFamily:"inherit",resize:"vertical"}}/>:<div style={{fontSize:12,color:C.muted,lineHeight:1.7,fontStyle:"italic"}}>{story.visual_style_notes && typeof story.visual_style_notes === "object" ? Object.values(story.visual_style_notes).join(" · ") : story.visual_style_notes}</div>}</Sec>
           </div>
         </div>
       )}
