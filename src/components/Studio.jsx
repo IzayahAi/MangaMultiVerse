@@ -85,6 +85,8 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
   const playTokenRef       = useRef(null);
   const autoSaveRef        = useRef(null); // debounce timer for cloud auto-save
   const lastSavedSigRef    = useRef("");   // skip redundant auto-saves
+  const editStatusRef      = useRef(null); // LIVE status — read inside autoSave so a stale timer closure can't downgrade a just-published story
+  const publishingRef      = useRef(false);// true while a publish / update-live is in flight — blocks a draft auto-save from racing (and clobbering) it
 
   useEffect(()=>{ if(stream) ref.current?.scrollIntoView({behavior:"smooth"}); },[stream]);
 
@@ -920,6 +922,10 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     setTab(s.script?.panels?.length ? "reader" : "concept");
   };
 
+  // Keep the live-status ref in lockstep with editStatus so autoSave (which may run from a timer scheduled
+  // in an earlier render) always sees the CURRENT status, not the one captured in its closure.
+  useEffect(() => { editStatusRef.current = editStatus; }, [editStatus]);
+
   const save = async () => {
     if (!user) { onRequestAuth(); return; }
     if (chapterNum > 1) { const ok = await persistChapterN("draft"); setToast({ msg: ok ? `Chapter ${chapterNum} draft saved ✓` : "Chapter save failed", type: ok ? "ok" : "err" }); return; }
@@ -936,6 +942,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
   // re-saves. Same record each time (via story.id), so no duplicates.
   const autoSave = async () => {
     if (!user || !story) return;
+    if (publishingRef.current) return; // a publish / update-live is in flight — never race it with a draft save
     const pub = panelImagesForSave();
     const sig = JSON.stringify({ ch: chapterNum, t: story.title, pc: script?.panels?.length || 0, pi: panelSig(pub), cb: !!cb, v: !!voices, cov: !!coverArt });
     if (sig === lastSavedSigRef.current) return;
@@ -943,7 +950,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
       // Chapter 2+ auto-saves to the chapters table (as a draft) even if the STORY is published — the
       // chapter has its own status, so writing a new chapter never unpublishes the series.
       if (chapterNum > 1) { const ok = await persistChapterN("draft"); if (ok) lastSavedSigRef.current = sig; return; }
-      if (editStatus === "published") return; // Ch.1 of a published story: don't auto-unpublish (needs Update-live)
+      if (editStatusRef.current === "published") return; // Ch.1 of a published story: don't auto-unpublish (live status, immune to a stale timer closure)
       const s = await onSave({ ...story, script: script ? { ...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: pub } : script, character_brief: cb, cover_art: coverArt, voices, status: "draft", author_name: user.username });
       if (s?.id) { if (!editingId) setEditingId(s.id); if (!story.id) setStory(prev => prev ? { ...prev, id: s.id } : prev); persistPanels(s.id); }
       lastSavedSigRef.current = sig;
@@ -962,18 +969,18 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
   // Save edits straight to the live published chapter (same record, live immediately)
   const updateLive = async () => {
     if (!user) { onRequestAuth(); return; }
-    if (chapterNum > 1) { setPub(true); try { const ok = await persistChapterN("published"); setToast({ msg: ok ? `Chapter ${chapterNum} updated live ✓` : "Update failed", type: ok ? "ok" : "err" }); } finally { setPub(false); } return; }
+    if (chapterNum > 1) { setPub(true); publishingRef.current = true; clearTimeout(autoSaveRef.current); try { const ok = await persistChapterN("published"); setToast({ msg: ok ? `Chapter ${chapterNum} updated live ✓` : "Update failed", type: ok ? "ok" : "err" }); } finally { setPub(false); publishingRef.current = false; } return; }
     if (script?.panels?.length && !Object.keys(panelImagesForSave()).length &&
         !window.confirm("This chapter has no saved panel art yet, so readers on other devices will see empty panels.\n\nGenerate panels first — update live anyway?")) return;
-    setPub(true);
+    setPub(true); publishingRef.current = true; clearTimeout(autoSaveRef.current);
     try {
       const saved = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: panelImagesForSave()} : script, character_brief:cb, cover_art:coverArt, voices, status:"published", author_name:user?.username||story.author_name||"Anonymous", updated_at:new Date().toISOString()});
       persistPanels(saved?.id);
       setStory(prev => ({...prev, id:saved.id}));
-      setEditingId(saved.id); setEditStatus("published");
+      setEditingId(saved.id); setEditStatus("published"); editStatusRef.current = "published";
       setToast({msg:`"${story.title}" updated live ✓`,type:"ok"});
     } catch(e){ setToast({msg:"Update failed: "+e.message,type:"err"}); }
-    finally { setPub(false); }
+    finally { setPub(false); publishingRef.current = false; }
   };
 
   // Pre-generate the chapter's translations for the chosen languages at publish time, so every reader
@@ -1011,12 +1018,12 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
         !window.confirm("This chapter has no saved panel art yet, so readers on other devices will see empty panels.\n\nGenerate panels first for the full experience — publish anyway?")) return;
     // Chapter 2+ publishes to the chapters table (its own row), not the story record.
     if (chapterNum > 1) {
-      setPub(true);
+      setPub(true); publishingRef.current = true; clearTimeout(autoSaveRef.current);
       try { const ok = await persistChapterN("published"); if (ok) { setShowPub(false); setToast({ msg: `Chapter ${chapterNum} is live 🎉`, type: "ok" }); onPublished?.(story); } else setToast({ msg: "Publish failed", type: "err" }); }
-      finally { setPub(false); }
+      finally { setPub(false); publishingRef.current = false; }
       return;
     }
-    setPub(true);
+    setPub(true); publishingRef.current = true; clearTimeout(autoSaveRef.current);
     try {
       const translations = await pregenerateTranslations(langs);
       const saved = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: panelImagesForSave()} : script, character_brief:cb, cover_art:coverArt, voices, status:"published", content_rating:rating, author_name:user?.username||"Anonymous", langs:1+langs.length, published_at:new Date().toISOString()});
@@ -1024,12 +1031,12 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
       if (Object.keys(translations).length) { try { await onSaveTranslations?.(saved.id, translations); } catch(e){ console.warn("save translations:", e.message); } }
       persistPanels(saved?.id);
       setStory(prev => ({...prev, id:saved.id}));
-      setEditingId(saved.id); setEditStatus("published");
+      setEditingId(saved.id); setEditStatus("published"); editStatusRef.current = "published";
       setShowPub(false);
       setToast({msg:`"${story.title}" is live on the homepage 🎉`,type:"ok"});
       onPublished?.(saved);   // take the creator to the homepage to see it live
     } catch(e){ setToast({msg:"Publish failed: "+e.message,type:"err"}); }
-    finally{ setPub(false); }
+    finally{ setPub(false); publishingRef.current = false; }
   };
 
   // ── Multi-chapter series ──────────────────────────────────────────────────────
