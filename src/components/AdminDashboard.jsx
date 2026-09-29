@@ -57,7 +57,7 @@ export default function AdminDashboard({ auth, published = [], db, onOpenStory, 
           </div>
         ))}
       </div>
-      <TodoList userKey={auth?.user?.username || auth?.user?.id || "me"} />
+      <TodoList token={auth?.token} />
       <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Jump to</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {NAV.flatMap(g => g.items).filter(i => i.id !== "overview").map(i => (
