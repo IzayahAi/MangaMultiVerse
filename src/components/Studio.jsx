@@ -855,6 +855,23 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     Object.entries(panelImages).filter(([, v]) => typeof v === "string" && v.startsWith("http"))
   );
 
+  // The panel_images map to SEND on any Chapter-1 save: the current hosted art MERGED OVER whatever is
+  // already stored on the story. This is a one-way ADD/UPDATE — a save can never blow away the DB's
+  // existing panels just because component state was momentarily empty or partial (a mount/generation
+  // race). Mirrors the load-time "the saved copy is the floor" rule (see loadDraft). Since the server
+  // PATCH replaces the whole `script` column, the client must send the complete intended map.
+  const panelImagesForSave = () => ({ ...(story?.script?.panel_images || {}), ...publicPanelImages() });
+
+  // Cheap, stable content signature of a panel map (djb2 over sorted key+value). autoSave dedups on
+  // this so regenerating the SAME number of panels (new URLs, unchanged count) still persists — a plain
+  // key COUNT would treat it as a no-op and silently drop the new art.
+  const panelSig = (m) => {
+    const s = Object.keys(m).sort().map((k) => k + m[k]).join("|");
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    return h;
+  };
+
   // Persist generated panel images under a story id so the reader can show them later — locally
   // immediately, AND to the cloud (fire-and-forget), so art isn't lost if the creator navigates away
   // before the 5s autoSave debounce fires. Chapter scripts had this exact bug (see genChapter's
@@ -906,7 +923,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
   const save = async () => {
     if (!user) { onRequestAuth(); return; }
     if (chapterNum > 1) { const ok = await persistChapterN("draft"); setToast({ msg: ok ? `Chapter ${chapterNum} draft saved ✓` : "Chapter save failed", type: ok ? "ok" : "err" }); return; }
-    const s = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: publicPanelImages()} : script, character_brief:cb, cover_art:coverArt, voices, status:"draft", author_name:user.username});
+    const s = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: panelImagesForSave()} : script, character_brief:cb, cover_art:coverArt, voices, status:"draft", author_name:user.username});
     setStory(prev => ({...prev, id:s.id}));
     setEditingId(s.id); setEditStatus("draft");
     persistPanels(s.id);
@@ -919,8 +936,8 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
   // re-saves. Same record each time (via story.id), so no duplicates.
   const autoSave = async () => {
     if (!user || !story) return;
-    const pub = publicPanelImages();
-    const sig = JSON.stringify({ ch: chapterNum, t: story.title, pc: script?.panels?.length || 0, pi: Object.keys(pub).length, cb: !!cb, v: !!voices, cov: !!coverArt });
+    const pub = panelImagesForSave();
+    const sig = JSON.stringify({ ch: chapterNum, t: story.title, pc: script?.panels?.length || 0, pi: panelSig(pub), cb: !!cb, v: !!voices, cov: !!coverArt });
     if (sig === lastSavedSigRef.current) return;
     try {
       // Chapter 2+ auto-saves to the chapters table (as a draft) even if the STORY is published — the
@@ -946,11 +963,11 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
   const updateLive = async () => {
     if (!user) { onRequestAuth(); return; }
     if (chapterNum > 1) { setPub(true); try { const ok = await persistChapterN("published"); setToast({ msg: ok ? `Chapter ${chapterNum} updated live ✓` : "Update failed", type: ok ? "ok" : "err" }); } finally { setPub(false); } return; }
-    if (script?.panels?.length && !Object.keys(publicPanelImages()).length &&
+    if (script?.panels?.length && !Object.keys(panelImagesForSave()).length &&
         !window.confirm("This chapter has no saved panel art yet, so readers on other devices will see empty panels.\n\nGenerate panels first — update live anyway?")) return;
     setPub(true);
     try {
-      const saved = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: publicPanelImages()} : script, character_brief:cb, cover_art:coverArt, voices, status:"published", author_name:user?.username||story.author_name||"Anonymous", updated_at:new Date().toISOString()});
+      const saved = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: panelImagesForSave()} : script, character_brief:cb, cover_art:coverArt, voices, status:"published", author_name:user?.username||story.author_name||"Anonymous", updated_at:new Date().toISOString()});
       persistPanels(saved?.id);
       setStory(prev => ({...prev, id:saved.id}));
       setEditingId(saved.id); setEditStatus("published");
@@ -990,7 +1007,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
 
   const publish = async (langs, rating = DEFAULT_RATING) => {
     // Don't let a chapter ship with panels but no hosted art — readers would see blanks.
-    if (script?.panels?.length && !Object.keys(publicPanelImages()).length &&
+    if (script?.panels?.length && !Object.keys(panelImagesForSave()).length &&
         !window.confirm("This chapter has no saved panel art yet, so readers on other devices will see empty panels.\n\nGenerate panels first for the full experience — publish anyway?")) return;
     // Chapter 2+ publishes to the chapters table (its own row), not the story record.
     if (chapterNum > 1) {
@@ -1002,7 +1019,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     setPub(true);
     try {
       const translations = await pregenerateTranslations(langs);
-      const saved = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: publicPanelImages()} : script, character_brief:cb, cover_art:coverArt, voices, status:"published", content_rating:rating, author_name:user?.username||"Anonymous", langs:1+langs.length, published_at:new Date().toISOString()});
+      const saved = await onSave({...story, script: script ? {...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: panelImagesForSave()} : script, character_brief:cb, cover_art:coverArt, voices, status:"published", content_rating:rating, author_name:user?.username||"Anonymous", langs:1+langs.length, published_at:new Date().toISOString()});
       // Store translations in their OWN table (keyed by the saved story id) — never in the story record.
       if (Object.keys(translations).length) { try { await onSaveTranslations?.(saved.id, translations); } catch(e){ console.warn("save translations:", e.message); } }
       persistPanels(saved?.id);
