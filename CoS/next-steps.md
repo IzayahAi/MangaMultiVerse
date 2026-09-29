@@ -37,9 +37,17 @@ logs (25 sessions through 2026-09-28). Last updated 2026-09-28._
 
 ## 🟢 Ops / maintenance agents
 
-- [ ] **Finish arming the maintenance runner.** `SUPABASE_SERVICE_ROLE_KEY` is set in Vercel; **`CRON_SECRET`
-      is still missing (verified today)**. Add it so the daily `cron_tick` agents authorize past RLS. (Confirm
-      whether the Vercel cron header already covers auth, or the secret is genuinely required.)
+- [x] **`CRON_SECRET` — added & verified (2026-09-28).** Set cleanly in Vercel production (newline-free) and
+      confirmed live via `GET /api/maintenance?check=selfcheck` → `actor:"cron"`, `cron_secret:true`, HTTP 200.
+      Note: this was **optional, not a blocker** — the daily `cron_tick`/auto-heal already authorizes via the
+      platform-injected `x-vercel-cron` header (`api/maintenance.js:30`), independent of the secret. `CRON_SECRET`
+      only enables *external* manual triggering (curl the endpoint without an admin login).
+- [x] **Runner armed — service-role key fixed (2026-09-28).** `selfcheck` now returns `armed:true`,
+      `serviceRead:"ok"`. Root cause: the `SUPABASE_SERVICE_ROLE_KEY` in Vercel prod had a trailing newline
+      (added via `echo` — same footgun as CRON_SECRET), so `Bearer <jwt>\n` was an invalid JWT → RLS denied. Fixed
+      by re-adding the known-good `service_role` key (from `.env.local`, verified `role:service_role`) newline-free
+      via `printf %s | vercel env add` + `vercel --prod`. Spend Sentinel / Health Medic / Translator Queue can now
+      read past RLS.
 - [ ] **Verify the two data-writer agents on a throwaway story before cron-promoting:** Health Medic's
       `medic_heal` (does the reader pick up panels it writes to `script.panel_images`?) and the Translator
       Queue (does a written translation render? confirm the `translations` shape).
