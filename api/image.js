@@ -1,7 +1,7 @@
 import { guard, corsHeaders, getToken } from "./_guard.js";
 import { RELEASE_MODE } from "./_pricing.js";
 import { planAllows } from "./_supa.js";
-import { uploadPanelArt, _storageDebug } from "./_storage.js";
+import { uploadPanelArt } from "./_storage.js";
 
 export default async function handler(req, res) {
   const cors = corsHeaders(req);
@@ -103,7 +103,7 @@ export default async function handler(req, res) {
       // (bucket not set up yet, transient error) so generation still works either way.
       if (imageB64) {
         const uploaded = await uploadPanelArt(Buffer.from(imageB64, 'base64'), 'image/png');
-        return res.status(200).json(uploaded ? { url: uploaded } : { b64: imageB64, _debug: _storageDebug() });
+        return res.status(200).json(uploaded ? { url: uploaded } : { b64: imageB64 });
       }
 
       if (imageUrl) {
@@ -112,7 +112,7 @@ export default async function handler(req, res) {
           if (imgRes.ok) {
             const buffer = Buffer.from(await imgRes.arrayBuffer());
             const uploaded = await uploadPanelArt(buffer, 'image/png');
-            return res.status(200).json(uploaded ? { url: uploaded } : { b64: buffer.toString('base64'), _debug: _storageDebug() });
+            return res.status(200).json(uploaded ? { url: uploaded } : { b64: buffer.toString('base64') });
           }
         } catch {}
         return res.status(200).json({ url: imageUrl });
