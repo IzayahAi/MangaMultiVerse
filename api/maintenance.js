@@ -759,6 +759,50 @@ const CHECKS = {
     return { ok: true, story_id: id, healed, panels: done, skippedDataUri };
   },
 
+  // 🩹 Health Medic — auto-heal (CRON): every day, fill a bounded number of missing panels across the
+  // neediest published stories via Together's free FLUX, so art gaps self-heal without manual steps. The
+  // per-run cap keeps it inside the function timeout; a large backlog drains over successive days. This is
+  // the standing safety net for the "art never reached the DB" class of bug (root cause — the empty
+  // server anon key — is fixed; this catches any future transient upload failure). Writes to the DB, so
+  // cron/admin only. Idempotent: only panels lacking an http image are touched.
+  async medic_autoheal(_params, ctx = {}) {
+    if (ctx.actor !== "cron" && ctx.actor !== "admin") return { ok: false, note: "cron/admin only" };
+    const stories = await svcJson(`/rest/v1/stories?status=eq.published&select=id,title,script&limit=2000`);
+    if (stories === null) return { armed: false, note: "Add SUPABASE_SERVICE_ROLE_KEY to arm." };
+    const PER_RUN_CAP = 8; // panels healed per cron run — bounded to stay within the function timeout
+    const hasArt = (p, imgs) => (p && (p.image || p.img || p.url || p.image_url)) || (imgs[p?.number] && /^https?:\/\//.test(String(imgs[p.number])));
+    const gapStories = stories.map((s) => {
+      const sc = s.script || {}; const panels = Array.isArray(sc.panels) ? sc.panels : [];
+      const imgs = sc.panel_images && typeof sc.panel_images === "object" ? sc.panel_images : {};
+      return { s, missing: panels.filter((p) => !hasArt(p, imgs)).length };
+    }).filter((g) => g.missing > 0).sort((a, b) => b.missing - a.missing);
+
+    let healedTotal = 0; const touched = [];
+    for (const g of gapStories) {
+      if (healedTotal >= PER_RUN_CAP) break;
+      const s = g.s; const sc = s.script || {};
+      const panels = Array.isArray(sc.panels) ? sc.panels : [];
+      const imgs = { ...(sc.panel_images && typeof sc.panel_images === "object" ? sc.panel_images : {}) };
+      const done = [];
+      for (let i = 0; i < panels.length && healedTotal < PER_RUN_CAP; i++) {
+        const p = panels[i] || {}; const key = p.number != null ? p.number : i;
+        if (hasArt(p, imgs)) continue;
+        const scene = p.scene || p.scene_description || p.description || s.title || "manga panel";
+        const url = await togetherImage(`${scene}, manga illustration, high quality, no text`);
+        if (url && /^https?:\/\//.test(url)) { imgs[key] = url; healedTotal++; done.push(key); }
+      }
+      if (done.length) {
+        await svc(`/rest/v1/stories?id=eq.${encodeURIComponent(s.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ script: { ...sc, panel_images: imgs }, updated_at: new Date().toISOString() }) });
+        touched.push({ id: s.id, title: s.title || null, healed: done.length });
+      }
+    }
+    const remaining = Math.max(0, gapStories.reduce((a, x) => a + x.missing, 0) - healedTotal);
+    if (ctx.actor === "cron" && healedTotal > 0) {
+      await alertInbox(`🩹 Health Medic auto-healed ${healedTotal} missing panel${healedTotal === 1 ? "" : "s"} across ${touched.length} stor${touched.length === 1 ? "y" : "ies"}. ~${remaining} panel${remaining === 1 ? "" : "s"} still queued for the next run.`);
+    }
+    return { ok: true, healed: healedTotal, stories: touched.length, touched, approxRemaining: remaining };
+  },
+
   // ✨ Curator & Recommender — platform-wide shelves from the published catalog: trending (rating + views +
   // recency), fresh, themed-by-genre, and optional Claude staff-picks. Read-only + safe. The homepage can
   // consume this later; for now it surfaces on the Maintenance page.
@@ -830,7 +874,7 @@ const CHECKS = {
     const run = (name) => CHECKS[name](params, ctx).catch((e) => ({ error: e.message }));
     // The unattended set: money, prod, security, data, discovery. links_check + catalog_check are
     // on-demand quality audits (button-only) — not urgent and not worth a daily inbox nudge.
-    const names = ["spend_summary", "deploy_check", "tamper_watch", "uptime_check", "integrity_check", "posture_check", "deps_check", "discovery_check", "seo_audit", "publish_review"];
+    const names = ["spend_summary", "deploy_check", "tamper_watch", "uptime_check", "integrity_check", "posture_check", "deps_check", "discovery_check", "seo_audit", "publish_review", "medic_autoheal"];
     const out = {};
     const results = await Promise.all(names.map(run));
     names.forEach((n, i) => { out[n] = results[i]; });
