@@ -1,7 +1,7 @@
 # Next Steps — MangaMultiVerse
 
 _Mr. K's action backlog. Newest priorities at top. Rebuilt from the closed-session daily
-logs (25 sessions through 2026-09-28). Last updated 2026-09-28._
+logs (25 sessions through 2026-09-28). Last updated 2026-09-29._
 
 ---
 
@@ -17,12 +17,16 @@ logs (25 sessions through 2026-09-28). Last updated 2026-09-28._
 
 ## 🟠 Now unblocked by today's anon-key fix — verify these
 
-- [ ] **Panel art → database, end-to-end.** The storage-bucket upload fix (2026-09-23) could never be
-      verified because the server-side `SUPABASE_ANON_KEY` in Vercel was empty. That's fixed + redeployed
-      today, so: generate a chapter and confirm `script.panel_images` / storage URLs now populate. If good,
-      consider regenerating art for already-published stories (their `panel_images` is currently empty).
-- [ ] **Confirm the previously-swallowed server calls now succeed.** error_log inserts, credit charging,
-      and panel-art uploads all shared the broken key and were failing silently. Spot-check they work now.
+- [x] **Panel art → database, end-to-end (verified 2026-09-29).** Confirmed live: `POST /api/image`
+      returns `panel-art` storage URLs and they persist in `script.panel_images` (spot-checked reachable).
+      Went further: rehosted 356 legacy external provider URLs into the bucket (`panel_images` now 100%
+      own-bucket, 0 external), handled 3 dead links, and recovered the in-flight drafts' art. Then fixed
+      the *root-cause* Studio save bug so art stops drifting out of the DB (see Recently shipped). No known
+      panel-art gaps remain.
+- [x] **Panel-art uploads confirmed succeeding (2026-09-29).** The storage upload path works with the
+      restored anon key (verified end-to-end above). _Note: error_log inserts + credit charging were not
+      separately re-exercised this session — they share the now-confirmed-working key, so fold a dedicated
+      spot-check into the create-flow smoke test above._
 
 ## 🟡 Harden before PUBLIC (not required for a trusted tester round)
 
@@ -72,6 +76,21 @@ logs (25 sessions through 2026-09-28). Last updated 2026-09-28._
 
 ## ✅ Recently shipped (from the closed sessions)
 
+- **2026-09-29 — Studio panel-art SAVE bug fixed at the source (both chapter paths).** Save/autoSave/
+  updateLive/publish (Ch.1) and `chapterScript`/`persistChapterN` (Ch.2+) blindly overwrote `panel_images`
+  with component state, so an empty/partial state wiped DB art; the autosave dedup was count-only, so
+  same-count regenerations never persisted. Fix: merge current hosted art OVER the stored floor
+  (`panelImagesForSave` for Ch.1, chapter-row floor for Ch.2+) + a content-hash autosave signature
+  (`panelSig`). Commits `d0497a0` + `abbc9ab` → deployed → verified live on Glitch Run (Ch.1), The Inverted
+  Dungeon Ch.2, and Silent Resonance Ch.2. No known panel-art gaps remain.
+- **2026-09-29 — Panel art fully persisted to the DB.** Verified the storage fix end-to-end; rehosted 356
+  external provider URLs into the `panel-art` bucket (`panel_images` now 100% own-bucket, 0 external);
+  nulled 3 dead links (later regenerated); recovered 3 drafts' browser-cached art to the DB (Glitch Run,
+  Silent Resonance, Crimson Inherit — all 50/50).
+- **2026-09-29 — Temp `_debug` diagnostic removed** from `api/_storage.js` + `api/image.js` once panel-art
+  persistence was confirmed (commit `e5ba7ba`, deployed, smoke-tested clean).
+- **2026-09-28/29 — Maintenance runner fully armed.** `CRON_SECRET` added clean + `SUPABASE_SERVICE_ROLE_KEY`
+  newline corruption fixed → `selfcheck` `armed:true`, `serviceRead:"ok"` (details in the Ops section).
 - **2026-09-28 — Studio `Object.values(null)` crash fixed.** Surfaced by the Error Agent; root cause was
   `typeof null === "object"`. Null guards added at both sites. PR #1 merged → deployed → verified live.
 - **2026-09-28 — `SUPABASE_ANON_KEY` empty-in-Vercel bug fixed.** 15 dashboard re-saves had all landed empty
