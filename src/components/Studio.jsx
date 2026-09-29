@@ -1035,7 +1035,11 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
   // ── Multi-chapter series ──────────────────────────────────────────────────────
   // The current chapter's full script payload (script + panel art + presentation meta), shared by every
   // save path so Chapter 1 (story record) and Chapter 2+ (chapters table) store the exact same shape.
-  const chapterScript = () => script ? { ...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: publicPanelImages() } : script;
+  // panel_images MERGES current hosted art over the chapter's already-stored map (script.panel_images is
+  // the loaded chapter row's floor — set by switchChapter) so a chapter save can only add/update art,
+  // never wipe it when component state is momentarily empty/partial — the Chapter-2+ analog of
+  // panelImagesForSave() (which floors on story.script, i.e. Chapter 1's art).
+  const chapterScript = () => script ? { ...script, thought_style: thoughtStyle, cover_art: coverArt, support_characters: story?.support_characters, native_language: STYLE_NATIVE[style] || "English", layout: (style==="GL-EN"||style==="PRISMA") ? "webtoon" : "classic", mono: style==="JP-EN", art_style: style, panel_images: { ...(script.panel_images || {}), ...publicPanelImages() } } : script;
 
   // Save the CURRENT chapter when it's 2+ (Chapter 1 always flows through the story record via save/publish).
   // Bumps the story's `chapters` count so the reader knows how many exist. Returns true on success.
