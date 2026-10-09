@@ -227,3 +227,30 @@ export function onArtBubbles(lines, mood, fs) {
     );
   });
 }
+
+// A single bubble the CREATOR placed by hand, anchored at { x, y } as percentages of the panel.
+// Used by the Illustrator's draggable overlay (and, later, optionally by the reader when a panel
+// carries saved `bubbles`). `type` ∈ speech | shout | thought | narration | sfx. Pure presentation —
+// positioning/drag is handled by the caller via the wrapper's style.
+export function PositionedBubble({ type = "speech", text = "", character = "", fs = 14 }) {
+  const t = String(text || "");
+  if (type === "thought") return <ThoughtCloud fs={fs}>{t}</ThoughtCloud>;
+  if (type === "narration") return <NarrationBox fs={fs}>{t}</NarrationBox>;
+  const isVillain = /villain|antagonist|enemy|evil/i.test(character || "");
+  const bg = isVillain ? "#1a0010" : "#fff";
+  const tc = isVillain ? "#ffd9ec" : "#0a0a0a";
+  const stroke = isVillain ? "#e84393" : "#111";
+  if (type === "sfx" || type === "shout") {
+    return (
+      <div style={{ background: bg, padding: "15px 20px", textAlign: "center", clipPath: STARBURST, filter: "drop-shadow(0 0 1.5px #000) drop-shadow(0 2px 5px rgba(0,0,0,0.45))" }}>
+        <div style={{ fontFamily: SHOUT_FONT, textTransform: "uppercase", fontSize: Math.max(17, fs + 4), lineHeight: 1.12, color: tc, letterSpacing: "0.02em" }}>{t}</div>
+      </div>
+    );
+  }
+  // default: speech balloon
+  return (
+    <div style={{ background: bg, padding: "10px 15px", textAlign: "center", borderRadius: "48% / 40%", border: `2.5px solid ${stroke}`, boxShadow: "0 2px 9px rgba(0,0,0,0.45)" }}>
+      <div style={{ fontFamily: BUBBLE_FONT, textTransform: "uppercase", fontWeight: 700, fontSize: Math.max(13, fs), lineHeight: 1.12, color: tc }}>{t}</div>
+    </div>
+  );
+}

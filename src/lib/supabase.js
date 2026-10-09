@@ -354,6 +354,37 @@ export async function saveBible(storyId, data, prefs, token) {
   catch (e) { console.warn("saveBible failed:", e.message); return false; }
 }
 
+// Upload creator-supplied panel art (a data: URL from a file drop, or raw bytes) to the public
+// 'panel-art' bucket and return the public https URL — the client-side twin of api/_storage.js. The
+// bucket has open-insert RLS (db/panel_art_storage.sql), same anon-key pattern as every other write.
+// Only hosted (http) URLs persist to the DB row (see publicPanelImages), so uploaded drawings MUST go
+// through here to reach other readers. Best-effort: returns null on any failure (caller keeps the
+// data: URL locally so the panel still shows on this device).
+export async function uploadPanelArt(dataUrlOrBytes, contentType) {
+  try {
+    let bytes, ct = contentType;
+    if (typeof dataUrlOrBytes === "string") {
+      const m = /^data:([^;]+);base64,(.*)$/s.exec(dataUrlOrBytes);
+      if (!m) return /^https?:\/\//.test(dataUrlOrBytes) ? dataUrlOrBytes : null; // already hosted, or not an image
+      ct = ct || m[1];
+      const bin = atob(m[2]);
+      bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    } else { bytes = dataUrlOrBytes; }
+    if (!bytes?.length) return null;
+    ct = ct || "image/png";
+    const ext = ct.includes("jpeg") || ct.includes("jpg") ? "jpg" : ct.includes("webp") ? "webp" : "png";
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+    const r = await fetch(`${SB_URL}/storage/v1/object/panel-art/${path}`, {
+      method: "POST",
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": ct },
+      body: bytes,
+    });
+    if (!r.ok) { console.warn("uploadPanelArt failed:", r.status); return null; }
+    return `${SB_URL}/storage/v1/object/public/panel-art/${path}`;
+  } catch (e) { console.warn("uploadPanelArt error:", e.message); return null; }
+}
+
 // ── Admin "Brain": an Obsidian-style linked-notes vault, private to admins. Lives in its OWN
 // `brain_notes` table (see db/brain_notes.sql) with admin-only RLS. Like translations, all calls are
 // best-effort: if the table doesn't exist yet they no-op, so the app never breaks pre-setup.
