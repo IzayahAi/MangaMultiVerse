@@ -1,7 +1,7 @@
 # Next Steps — MangaMultiVerse
 
 _Mr. K's action backlog. Newest priorities at top. Rebuilt from the closed-session daily
-logs (25 sessions through 2026-09-28). Last updated 2026-09-29._
+logs (25 sessions through 2026-09-28). Last updated 2026-10-09._
 
 ---
 
@@ -11,9 +11,12 @@ logs (25 sessions through 2026-09-28). Last updated 2026-09-29._
       exists but PostgREST hasn't cached it. One line in the Supabase SQL editor finishes it:
       `NOTIFY pgrst, 'reload schema';` (or toggle any API setting to force a reload). Until the probe
       returns 401/403 instead of 404, flipping `RELEASE_MODE` will 500 on every paid action. See `LAUNCH.md`.
-- [ ] **Founder create-flow smoke test.** Reader path is verified live; the *create* path has never been
-      run end-to-end with a working key. Now that the anon key is fixed (below), do: sign up → create a
-      story → generate a chapter (confirm the art renders) → publish. This is the gate on trusting the demo.
+- [x] **Founder create-flow smoke test — PASSED end-to-end (2026-10-09).** Ran against prod (built-in
+      browser): sign up (700-credit grant ✓) → create concept → write 50-panel script → generate panels
+      (78 images rendered + persisted 50/50 ✓) → publish. Credits charged 700→603. **Caught a real gate
+      bug** — publish reverted to `draft` via a trailing auto-save race — which was fixed (commit a156d09,
+      editStatusRef + publishingRef guards) and re-verified: publish now stays `published` and goes live on
+      the homepage. Test account (`izayah.fisher@gmail.com`) + story "Blood Remembers" kept for re-testing.
 
 ## 🟠 Now unblocked by today's anon-key fix — verify these
 
@@ -76,6 +79,11 @@ logs (25 sessions through 2026-09-28). Last updated 2026-09-29._
 
 ## ✅ Recently shipped (from the closed sessions)
 
+- **2026-10-09 — Founder create-flow smoke test passed + publish-revert bug fixed.** Full create→publish
+  path verified live in prod. Found and fixed a publish-reverts-to-draft race: a trailing draft auto-save
+  clobbered the just-published status (stale-closure `editStatus` guard + a concurrent-await race). Fix
+  (commit `a156d09`): `editStatusRef` (live status read inside autoSave) + `publishingRef` (blocks/cancels
+  auto-save during publish), on both Ch.1 and Ch.2+ paths. Re-verified: publish now sticks.
 - **2026-09-29 — Studio panel-art SAVE bug fixed at the source (both chapter paths).** Save/autoSave/
   updateLive/publish (Ch.1) and `chapterScript`/`persistChapterN` (Ch.2+) blindly overwrote `panel_images`
   with component state, so an empty/partial state wiped DB art; the autosave dedup was count-only, so
