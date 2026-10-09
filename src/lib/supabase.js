@@ -399,6 +399,7 @@ export async function checkSignupSlots() {
 }
 
 export async function signUp(email, password, username) {
+  username = (username || "").trim(); // no stray leading/trailing whitespace in the stored handle
   if (DEMO) return { user:{ id:`demo_${Date.now()}`, email, username }, token:"demo" };
   const r = await sb.rpc("/auth/v1/signup", { email, password, data:{ username } });
   // (never log the full auth response — it contains access/refresh tokens)
