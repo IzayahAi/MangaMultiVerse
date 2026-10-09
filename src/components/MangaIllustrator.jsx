@@ -32,6 +32,15 @@ const BUBBLE_KINDS = [
 const BUBBLE_TO_DIALOGUE = { speech: "speech", shout: "sfx", thought: "thought", narration: "narration" };
 
 const uid = () => Math.random().toString(36).slice(2, 9);
+// The analysis models sometimes return a refusal / "can't analyze" sentence instead of a profile
+// (e.g. when the only lettering is placeholder text). Never persist that — it would get injected
+// verbatim into AI Studio's prompts. Treat such a reply (or anything too short) as "nothing learned".
+const cleanLearned = (s) => {
+  const t = String(s || "").trim();
+  if (t.length < 20) return "";
+  if (/^(unable to|i (?:cannot|can't|am unable|could not|couldn't)|no (?:actual|valid|real|discernible|dialogue|text)|the (?:provided|given|text|sample|image))/i.test(t)) return "";
+  return t;
+};
 const blankPanel = (number, scene = "") => ({ number, panel_type: "half_page", scene, mood: "", cast: [], dialogue: [], bubbles: [] });
 
 export default function MangaIllustrator({ auth, onSaveStory, onSaveBible, setToast, onViewStory }) {
@@ -232,7 +241,7 @@ export default function MangaIllustrator({ auth, onSaveStory, onSaveBible, setTo
         artUrls.length ? askClaudeVision(P_STYLE_FROM_ART(artUrls.length), artUrls, "misc") : Promise.resolve(null),
         lines.length ? askClaude(P_VOICE_FROM_TEXT(lines), () => {}, 2, "misc") : Promise.resolve(null),
       ]);
-      const learned = { art: art?.visual_style_notes || "", lettering: voice?.lettering_voice || "" };
+      const learned = { art: cleanLearned(art?.visual_style_notes), lettering: cleanLearned(voice?.lettering_voice) };
       if (!learned.art && !learned.lettering) { setLearning(false); return; }
       setProfile(learned);
       // Persist (all best-effort):
