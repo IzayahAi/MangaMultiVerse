@@ -7,6 +7,7 @@ import {
 } from "../lib/claude.js";
 import { uploadPanelArt, fetchBible } from "../lib/supabase.js";
 import { PositionedBubble } from "./mangaBubbles.jsx";
+import PanelCanvas from "./PanelCanvas.jsx";
 import { STYLE_GUIDE, GENRES, rndCover } from "../constants.js";
 
 // ── Illustrator: a blank, creator-driven panel + page maker. The creator uploads/draws their own art
@@ -57,6 +58,7 @@ export default function MangaIllustrator({ auth, onSaveStory, onSaveBible, setTo
   const [sel, setSel]           = useState(1);       // selected panel number
   const [gening, setGening]     = useState(null);    // panel number currently generating
   const [uploading, setUploading] = useState(null);
+  const [drawingPanel, setDrawingPanel] = useState(null); // panel number being drawn, or null
   const [publishing, setPublishing] = useState(false);
   const [storyId, setStoryId]   = useState(null);
   const [learning, setLearning] = useState(false);
@@ -97,7 +99,15 @@ export default function MangaIllustrator({ auth, onSaveStory, onSaveBible, setTo
   const patchPanel = (number, patch) =>
     setPanels(prev => prev.map(p => p.number === number ? { ...p, ...patch } : p));
 
-  // ── Art: upload the creator's own drawing, or generate a starting image ─────────
+  // ── Art: commit a panel image (data URL from an upload or an in-app drawing) ─────
+  // Shows it immediately (device-local), then uploads to the bucket so every reader sees it.
+  const commitArt = async (number, dataUrl) => {
+    setImages(prev => ({ ...prev, [number]: dataUrl }));
+    const hosted = await uploadPanelArt(dataUrl);
+    if (hosted) setImages(prev => ({ ...prev, [number]: hosted }));
+    else toast("Saved locally — couldn't reach cloud storage, so readers on other devices won't see this panel until it syncs.", "warn");
+  };
+
   const onUpload = async (number, file) => {
     if (!file || !requireAuth()) return;
     setUploading(number);
@@ -105,13 +115,16 @@ export default function MangaIllustrator({ auth, onSaveStory, onSaveBible, setTo
       const dataUrl = await new Promise((res, rej) => {
         const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file);
       });
-      // Show it immediately (device-local), then upload to the bucket so every reader sees it.
-      setImages(prev => ({ ...prev, [number]: dataUrl }));
-      const hosted = await uploadPanelArt(dataUrl);
-      if (hosted) setImages(prev => ({ ...prev, [number]: hosted }));
-      else toast("Uploaded locally — couldn't reach cloud storage, so readers on other devices won't see this panel until it syncs.", "warn");
+      await commitArt(number, dataUrl);
     } catch (e) { toast("Couldn't read that image: " + e.message, "err"); }
     finally { setUploading(null); }
+  };
+
+  // Save a drawing from the in-app canvas as this panel's art.
+  const onDrawSave = async (number, dataUrl) => {
+    setDrawingPanel(null);
+    if (!requireAuth()) return;
+    try { await commitArt(number, dataUrl); } catch (e) { toast("Couldn't save the drawing: " + e.message, "err"); }
   };
 
   const generateStart = async (panel, reroll = false) => {
@@ -367,6 +380,7 @@ export default function MangaIllustrator({ auth, onSaveStory, onSaveBible, setTo
               <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Panel {selPanel.number}</div>
               <div style={label}>Scene / what's happening</div>
               <textarea value={selPanel.scene} onChange={e => patchPanel(selPanel.number, { scene: e.target.value })} rows={2} placeholder="e.g. Kaito draws his blade on the rooftop at dusk" style={{ ...inp, resize: "vertical", marginBottom: 10 }} />
+              <Btn onClick={() => setDrawingPanel(selPanel.number)} sx={{ width: "100%", justifyContent: "center", fontSize: 11, marginBottom: 6 }}>✏️ Draw this panel</Btn>
               <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
                 <Btn onClick={() => fileRef.current?.click()} disabled={uploading === selPanel.number} sx={{ flex: 1, justifyContent: "center", fontSize: 11 }}>{uploading === selPanel.number ? <Spinner size={12} /> : "⬆ Upload art"}</Btn>
                 <Btn onClick={() => generateStart(selPanel)} disabled={gening === selPanel.number} sx={{ flex: 1, justifyContent: "center", fontSize: 11 }}>{gening === selPanel.number ? <Spinner size={12} /> : "✦ Generate"}</Btn>
@@ -468,6 +482,15 @@ export default function MangaIllustrator({ auth, onSaveStory, onSaveBible, setTo
           </div>
         </div>
       </div>
+
+      {drawingPanel != null && (
+        <PanelCanvas
+          aspect={layout === "webtoon" ? 16 / 7 : 3 / 4}
+          initialImage={typeof images[drawingPanel] === "string" && images[drawingPanel].startsWith("data:") ? images[drawingPanel] : null}
+          onSave={(dataUrl) => onDrawSave(drawingPanel, dataUrl)}
+          onClose={() => setDrawingPanel(null)}
+        />
+      )}
     </div>
   );
 }
