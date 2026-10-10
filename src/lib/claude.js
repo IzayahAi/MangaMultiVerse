@@ -203,6 +203,107 @@ export async function askClaude(prompt, onChunk, retries=2, action="misc") {
   return null;
 }
 
+// Shared JSON extractor: clean a model reply (strip fences / smart punctuation), slice to the JSON
+// payload (object OR array), parse, and repair/salvage a truncated or lightly-malformed response.
+// Mirrors askClaude's own parse path; used by the vision call below. Returns parsed value or null.
+export function extractClaudeJson(full) {
+  if (!full || !full.trim()) return null;
+  let clean = full
+    .replace(/```json\s*/gi, "").replace(/```\s*/g, "")
+    .replace(/['']/g, "'").replace(/[""]/g, '"')
+    .replace(/—/g, "--").replace(/–/g, "-")
+    .trim();
+  const objStart = clean.indexOf("{");
+  const arrStart = clean.indexOf("[");
+  let start = -1;
+  if (arrStart !== -1 && (objStart === -1 || arrStart < objStart)) start = arrStart;
+  else start = objStart;
+  const end = Math.max(clean.lastIndexOf("}"), clean.lastIndexOf("]"));
+  if (start !== -1 && end > start) clean = clean.slice(start, end + 1);
+  try {
+    return JSON.parse(clean);
+  } catch {
+    try {
+      let fixed = fixInnerQuotes(clean)
+        .replace(/[\x00-\x08\x0b\x0e-\x1f\x7f]/g, "")
+        .replace(/,\s*([}\]])/g, "$1");
+      const openBraces = (fixed.match(/{/g) || []).length;
+      const closeBraces = (fixed.match(/}/g) || []).length;
+      const openBrackets = (fixed.match(/\[/g) || []).length;
+      const closeBrackets = (fixed.match(/\]/g) || []).length;
+      const lastMeaningful = fixed.trimEnd();
+      if (lastMeaningful && !'"}]'.includes(lastMeaningful[lastMeaningful.length - 1])) fixed = fixed.trimEnd() + '"';
+      for (let i = 0; i < openBrackets - closeBrackets; i++) fixed += ']';
+      for (let i = 0; i < openBraces - closeBraces; i++) fixed += '}';
+      return JSON.parse(fixed);
+    } catch {
+      const salvaged = salvageArray(clean);
+      if (salvaged) return salvaged;
+      return null;
+    }
+  }
+}
+
+// Build an Anthropic base64 image content block from a data: URI or an http(s) URL. Always resolves to
+// a base64 source (universally supported on anthropic-version 2023-06-01; the url source isn't), so an
+// http image is fetched and inlined. Returns null for anything we can't turn into a block.
+async function imageBlock(src) {
+  try {
+    if (typeof src !== "string") return null;
+    if (src.startsWith("data:")) {
+      const m = /^data:([^;]+);base64,(.*)$/s.exec(src);
+      if (!m) return null;
+      return { type: "image", source: { type: "base64", media_type: m[1], data: m[2] } };
+    }
+    if (/^https?:\/\//.test(src)) {
+      const r = await fetch(src);
+      if (!r.ok) return null;
+      const blob = await r.blob();
+      const mt = blob.type || "image/png";
+      const buf = new Uint8Array(await blob.arrayBuffer());
+      let bin = ""; const CH = 0x8000;
+      for (let i = 0; i < buf.length; i += CH) bin += String.fromCharCode.apply(null, buf.subarray(i, i + CH));
+      return { type: "image", source: { type: "base64", media_type: mt, data: btoa(bin) } };
+    }
+  } catch (e) { console.warn("imageBlock failed:", e.message); }
+  return null;
+}
+
+// Vision sibling of askClaude: sends a text prompt PLUS one or more images to the SAME /api/claude
+// passthrough proxy (haiku-4-5 is vision-capable), then parses JSON out of the reply. `images` is an
+// array of data: URIs and/or http(s) URLs. Returns parsed JSON, or null on any failure (best-effort —
+// callers treat a null as "no profile learned" and carry on).
+export async function askClaudeVision(prompt, images = [], action = "misc") {
+  const srcs = (Array.isArray(images) ? images : [images]).slice(0, 8);
+  const blocks = (await Promise.all(srcs.map(imageBlock))).filter(Boolean);
+  if (!blocks.length) return null;
+  const content = [{ type: "text", text: prompt }, ...blocks];
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 90000);
+    let res;
+    try {
+      res = await fetchWithBackoff("/api/claude", {
+        method: "POST", headers: apiHeaders(action),
+        body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 2000, messages: [{ role: "user", content }], stream: false }),
+        signal: ctrl.signal,
+      });
+    } finally { clearTimeout(timer); }
+    noteBalance(res);
+    if (!res.ok) {
+      if (res.status === 429) { try { _onBalance?.("demo_limit"); } catch {} }
+      else if (res.status === 401 || res.status === 402) { try { _onBalance?.(res.status === 402 ? "out_of_credits" : "auth"); } catch {} }
+      console.warn("askClaudeVision error:", res.status);
+      return null;
+    }
+    const data = await res.json();
+    return extractClaudeJson(data.content?.[0]?.text || "");
+  } catch (e) {
+    console.warn("askClaudeVision failed:", e.message);
+    return null;
+  }
+}
+
 // Cache-first translation via /api/translate: returns a globally-cached translation if one exists (free,
 // instant, same for everyone), else translates once (Haiku), persists it for every future reader, and returns
 // it. This is what makes "every manga in every language for every reader" affordable — each (story, language,
@@ -780,6 +881,10 @@ export const DEMOGRAPHIC_GUIDE = {
 };
 const demoLine = (d) => (d && DEMOGRAPHIC_GUIDE[d]) ? `\nTARGET AUDIENCE — ${d}: write for ${DEMOGRAPHIC_GUIDE[d]} Let this shape the tone, content, and what happens on the page.` : "";
 
+// Creator's learned dialogue/lettering voice (from the Illustrator → story brain, stored on the
+// story's script). When present, all generated dialogue should adopt it. No-op when absent.
+const voiceLine = (s) => { const v = s?.lettering_voice || s?.script?.lettering_voice; return v ? `\nDIALOGUE VOICE — write ALL dialogue, thoughts, and SFX in THIS creator's voice: ${v}` : ""; };
+
 const scriptCraft = (useNarrator = false) => `
 CRAFT RULES — write like a professional manga (One Piece, Chainsaw Man, Solo Leveling):
 - Each "scene" is 2-3 vivid CINEMATIC sentences: the camera angle, the character's exact expression and body language, the environment, the lighting, motion. An artist must be able to draw it exactly.
@@ -852,7 +957,7 @@ Story: ${s.protagonist?.name} — ${s.protagonist?.personality}. Wound: ${s.prot
 Antagonist: ${s.antagonist?.name || "?"} — ${s.antagonist?.motivation || "?"}.
 Supporting cast (use these EXACT names in "cast" when they appear): ${(s.support_characters||[]).map(c=>`${c.name} — ${c.role||""}`).join('; ') || "none"}.
 World: ${s.setting?.world} — ${s.setting?.description || ""}. Central conflict: ${s.central_conflict || ""}.
-Hook: ${s.chapter_one_hook}. Tone: ${s.visual_style_notes || "dramatic and vivid"}.${demoLine(demographic)}
+Hook: ${s.chapter_one_hook}. Tone: ${s.visual_style_notes || "dramatic and vivid"}.${demoLine(demographic)}${voiceLine(s)}
 Act 1 direction: ${s.story_arc?.[0]?.beats || "establish the world, expose the wound, ignite the inciting incident"}.
 Subplots you may weave in: ${(s.subplots||[]).join(' | ') || "none yet — plant one"}.
 Factions in play: ${(s.factions||[]).map(f=>`${f.name} (${f.stance||"?"})`).join('; ') || "none named"}.
@@ -870,7 +975,7 @@ Schema: {"chapter_title":"...","chapter_summary":"2-3 sentences","panels":[{"num
 export const P_SCRIPT_BATCH = (s, startPanel, endPanel, totalPanels, prevSummary, useNarrator = false, demographic) =>
   `You are an elite manga script writer continuing Chapter 1 of "${s.title}" (${totalPanels}-panel chapter).
 Story: ${s.protagonist?.name} — ${s.protagonist?.personality}. Wound: ${s.protagonist?.wound || "hidden"}.
-Antagonist: ${s.antagonist?.name || "?"} — ${s.antagonist?.motivation || "?"}. World: ${s.setting?.world}. Conflict: ${s.central_conflict || ""}. Tone: ${s.visual_style_notes || "dramatic"}.${demoLine(demographic)}
+Antagonist: ${s.antagonist?.name || "?"} — ${s.antagonist?.motivation || "?"}. World: ${s.setting?.world}. Conflict: ${s.central_conflict || ""}. Tone: ${s.visual_style_notes || "dramatic"}.${demoLine(demographic)}${voiceLine(s)}
 Supporting cast (use these EXACT names in "cast" when they appear): ${(s.support_characters||[]).map(c=>`${c.name} — ${c.role||""}`).join('; ') || "none"}.
 Subplots to weave/pay off: ${(s.subplots||[]).join(' | ') || "none"}. Factions in play: ${(s.factions||[]).map(f=>`${f.name} (${f.stance||"?"})`).join('; ') || "none"}.
 Chapter plot beats (keep MOVING through them — introduce a new event/reveal/reversal in this batch, don't stall in one scene): ${(s.chapter_one_beats||[]).map((b,i)=>`${i+1}) ${b}`).join('   ') || "escalate toward the cliffhanger"}.
@@ -888,7 +993,7 @@ export const P_CHAPTER = (s, chapterNumber = 2, panelCount = 10, prevRecap = "",
 Protagonist: ${s.protagonist?.name} — ${s.protagonist?.personality}. Wound: ${s.protagonist?.wound || "hidden"}. Wants: ${s.protagonist?.goal || "?"}.
 Antagonist: ${s.antagonist?.name || "?"} — ${s.antagonist?.motivation || "?"}.
 Supporting cast (use these EXACT names in "cast" when they appear): ${(s.support_characters||[]).map(c=>`${c.name} — ${c.role||""}`).join('; ') || "none"}.
-World: ${s.setting?.world} — ${s.setting?.description || ""}. Central conflict: ${s.central_conflict || ""}. Tone: ${s.visual_style_notes || "dramatic and vivid"}.${demoLine(demographic)}
+World: ${s.setting?.world} — ${s.setting?.description || ""}. Central conflict: ${s.central_conflict || ""}. Tone: ${s.visual_style_notes || "dramatic and vivid"}.${demoLine(demographic)}${voiceLine(s)}
 ${bible ? `STORY BIBLE (canon so far — honor it; keep characters, relationships, and open threads consistent):\n${bible}\n` : ""}STORY SO FAR (continue DIRECTLY from here and pay off the previous chapter's cliffhanger):
 ${prevRecap || "Continue the story from where the last chapter left off."}
 ${scriptCraft(useNarrator)}
@@ -921,6 +1026,59 @@ Return this exact JSON:
   "timeline": ["Ch1: what happened","Ch2: ..."],
   "running_recap": "2-4 sentences on where the story stands right now",
   "next_directions": [{"title":"short label","pitch":"one sentence — a direction the next chapter could take"}]
+}`;
+
+// ── Illustrator: learn a CREATOR's style from their own work ─────────────────────
+// Vision prompt — study the creator's hand-drawn/authored panels and distill a reusable ART-style
+// profile. `visual_style_notes` is written to feed generatePanelImage() prompts in the AI Studio, so
+// it must read as concrete, comma-separated image-prompt vocabulary (not prose about the artist).
+export const P_STYLE_FROM_ART = (nImages) =>
+  `You are an art director studying ${nImages} manga/comic panel image${nImages === 1 ? "" : "s"} drawn by ONE creator, to capture their personal drawing style so an AI can later generate NEW panels that look like the same artist made them. Look only at what is actually in the images — never invent. Respond ONLY with valid JSON, no markdown.
+
+Return this exact JSON:
+{
+  "visual_style_notes": "a concrete, comma-separated art-prompt phrase describing THIS creator's look — line weight and inking, shading/screentone or cel-shading, color vs black-and-white, palette, rendering detail, panel framing and camera tendencies, character-design conventions, overall genre feel. Written as image-generation vocabulary, e.g. 'bold heavy inks, high-contrast black-and-white, dense screentone shadows, dynamic low-angle framing, expressive sharp-featured faces'. 1-2 sentences max.",
+  "art_style_guess": "the closest house style: JP-EN | KR-EN | CN-EN | US-EN | GL-EN | PRISMA",
+  "mono": true,
+  "tags": ["3-6 short descriptive tags"]
+}`;
+
+// Analyze the creator's bubble/SFX/narration TEXT to capture their lettering + dialogue VOICE, so the
+// AI Studio's script generation can write dialogue that sounds like the same author.
+export const P_VOICE_FROM_TEXT = (lines) =>
+  `You study a manga creator's own lettering — the exact speech, thought, SFX, and narration text below — to capture HOW they write, so an AI can later write new dialogue in the same voice. Describe only patterns you can see in the text. Respond ONLY with valid JSON, no markdown.
+
+The creator's lines:
+${(Array.isArray(lines) ? lines : []).slice(0, 60).map((l, i) => `${i + 1}. ${l}`).join("\n") || "(none provided)"}
+
+Return this exact JSON:
+{
+  "lettering_voice": "1-2 sentences describing their dialogue voice — tone, sentence length, punctuation habits, ALL-CAPS/emphasis use, SFX style, slang/register, narration flavor. Written as guidance an AI can follow when writing new dialogue.",
+  "examples": ["2-4 short lines that exemplify the voice (quote or close paraphrase)"],
+  "thought_style": "caption"
+}`;
+
+// Text-only next-chapter idea generator. Draws on the brain's recap + open hooks + threads to propose
+// fuller directions for the creator to DRAW. It must NOT describe generating images — the creator draws.
+export const P_NEXT_IDEAS = (story, bible) =>
+  `You are a manga story editor helping the creator of "${story?.title || "this story"}" decide what to draw NEXT. Using ONLY the established canon below, propose 3-4 distinct, compelling directions the next chapter could take. Each gives the creator a clear option with concrete beats they can illustrate themselves. Do NOT generate or describe any artwork style — only story direction and panel beats as text. Pay off existing open hooks where it makes the story stronger. Respond ONLY with valid JSON, no markdown.
+
+Running recap: ${bible?.running_recap || story?.logline || "(none yet)"}
+Open hooks: ${JSON.stringify(bible?.open_hooks || [])}
+Plot threads: ${JSON.stringify(bible?.plot_threads || [])}
+Characters: ${JSON.stringify((bible?.characters || []).map(c => c.name).filter(Boolean))}
+
+Return this exact JSON:
+{
+  "ideas": [
+    {
+      "title": "short evocative label",
+      "pitch": "1-2 sentences — what happens and why it matters",
+      "beats": ["3-5 concrete panel/scene beats the creator can draw, in order"],
+      "pays_off": ["which open hook(s) this resolves, or [] "],
+      "tone": "one or two words"
+    }
+  ]
 }`;
 
 // Bonus non-canon "cover request" gag (One Piece SBS style) for the chapter intro / cut-scene extras.

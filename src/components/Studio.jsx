@@ -203,6 +203,11 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     const s4 = await askClaude(AGENT_STEP4(s1, s2||{}, s3||{}), ()=>{});
     if (s4) setStory(prev => ({...prev, ...s4}));
 
+    // Creator style carry-over: if this creator has published through the Illustrator before, their
+    // learned art + lettering profile (cached as mv_style_<userId>) pre-seeds this new story so the
+    // AI generates in their established style. Best-effort; absent for first-time / signed-out users.
+    let carryStyle = null;
+    try { if (user?.id) carryStyle = JSON.parse(localStorage.getItem(`mv_style_${user.id}`) || "null"); } catch {}
     setStory(prev => {
       const fix = arr => Array.isArray(arr) ? arr : (arr ? String(arr).split(",").map(s=>s.trim()).filter(Boolean) : []);
       const fixStr = val => {
@@ -232,7 +237,11 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
         factions: Array.isArray(prev.factions) ? prev.factions : [],
         protagonist: fixCharacter(prev.protagonist),
         antagonist: fixCharacter(prev.antagonist),
-        visual_style_notes: fixStr(prev.visual_style_notes),
+        // Prefer the creator's learned art style when they have one, so panels match their look.
+        visual_style_notes: (carryStyle?.art || "").trim() || fixStr(prev.visual_style_notes),
+        // Carried on the story so voiceLine() steers chapter-1 dialogue generation; folded into the
+        // script below so it persists and feeds later chapters too.
+        lettering_voice: (carryStyle?.lettering || "").trim() || undefined,
         central_conflict: fixStr(prev.central_conflict),
         logline: fixStr(prev.logline),
         chapter_one_hook: fixStr(prev.chapter_one_hook),
@@ -264,7 +273,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
       // Small chapter — single call
       const r = await askClaude(P_SCRIPT(story, panelCount, useNarrator, demographic), t => setStream(t));
       setLoad(false);
-      if (r) { r.panels = stripNarration(r.panels); setScript(r); updateBible(chapterNum, r); }
+      if (r) { r.panels = stripNarration(r.panels); if (story?.lettering_voice) r.lettering_voice = story.lettering_voice; setScript(r); updateBible(chapterNum, r); }
       return;
     }
 
@@ -316,7 +325,7 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     setLoad(false);
     setScriptProgress("");
     if (allPanels.length > 0) {
-      const builtCh = { chapter_title: chapterTitle, chapter_summary: chapterSummary, panels: stripNarration(allPanels), chapter_end_hook: chapterEndHook };
+      const builtCh = { chapter_title: chapterTitle, chapter_summary: chapterSummary, panels: stripNarration(allPanels), chapter_end_hook: chapterEndHook, ...(story?.lettering_voice ? { lettering_voice: story.lettering_voice } : {}) };
       setScript(builtCh); updateBible(chapterNum, builtCh);
     }
   };
@@ -481,7 +490,12 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
           ? ` This is a conversation beat: ${speakers.join(" and ")} ${speakers.length > 1 ? "talking to each other, mid-exchange" : "speaking"} — show them with mouths/expressions and body language that match a "${panel.mood || 'dramatic'}" tone, others reacting.`
           : ` ${speakers[0]} is deep in thought — show a pensive, internal expression matching a "${panel.mood || 'dramatic'}" tone.`;
       }
-      const description = `${base}.${world}${dense} Mood: ${panel.mood || 'dramatic'}. Shot: ${panel.panel_type || 'half_page'}.${convo}${cont}`;
+      // Creator style: a learned art profile (from the Illustrator → story brain) or the story's
+      // visual_style_notes. Placed right after the scene so it survives generatePanelImage's prompt
+      // truncation and steers every panel toward the creator's own look. No-op when absent.
+      const creatorStyle = String(story?.visual_style_notes || "").trim();
+      const styleNote = creatorStyle ? ` Art style: ${creatorStyle.slice(0, 180)}.` : "";
+      const description = `${base}.${styleNote}${world}${dense} Mood: ${panel.mood || 'dramatic'}. Shot: ${panel.panel_type || 'half_page'}.${convo}${cont}`;
       const characterContext = present.length ? present.map(p => p.sheet).join('. ') : "no characters in frame — focus entirely on the environment and atmosphere";
       // Seed the panel off the PROTAGONIST whenever they're in frame (so their look is requested
       // identically across all their panels), else off the most prominent character present.

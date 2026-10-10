@@ -654,6 +654,7 @@ export default function MangaMultiVerse() {
             onViewStory={(s)=>{setSel(s);setPage("library");}}
             onEditStory={onEditStory}
             onSaveStory={onSaveStory}
+            onSaveBible={async (storyId, data, prefs)=>saveBible(storyId, data, prefs, auth?.token)}
             onUnpublish={async (s)=>{ await onSaveStory({...s, status:"draft"}); refreshPublic(); setToast({msg:`"${s.title}" unpublished — moved back to your drafts`,type:"ok"}); }}
             onDelete={async (s)=>{ await db.remove(s.id); try{ localStorage.removeItem(`mv_panels_${s.id}`); }catch{} refreshPublic(); if(sel?.id===s.id) setSel(null); setToast({msg:`"${s.title}" deleted`,type:"ok"}); }}
             setToast={setToast}

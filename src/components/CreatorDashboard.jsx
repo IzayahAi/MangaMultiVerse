@@ -2,6 +2,7 @@
 import { useTheme } from "../ThemeContext.jsx";
 import { askClaude, P_PARSE_UPLOAD } from "../lib/claude.js";
 import { Tag, Btn, Spinner, CoverCard } from "./UI.jsx";
+import MangaIllustrator from "./MangaIllustrator.jsx";
 
 // This device's saved copy of a story's panel art, filtered to hosted (http) URLs — the only
 // kind safe to sync into the DB row so EVERY reader (not just this browser) sees the panels.
@@ -21,7 +22,7 @@ const needsArtSync = (s) =>
   (s.script?.panels?.length > 0) &&
   Object.keys(s.script?.panel_images || {}).length === 0;
 
-const CreatorDashboard = ({ auth, db, published, onShowAuth, onGoStudio, onViewStory, onEditStory, onSaveStory, onUnpublish, onDelete, setToast }) => {
+const CreatorDashboard = ({ auth, db, published, onShowAuth, onGoStudio, onViewStory, onEditStory, onSaveStory, onSaveBible, onUnpublish, onDelete, setToast }) => {
   const C = useTheme();
   const [creatorTab, setCreatorTab] = useState("dashboard");
   const [uploadFile, setUploadFile] = useState(null);
@@ -164,9 +165,10 @@ const CreatorDashboard = ({ auth, db, published, onShowAuth, onGoStudio, onViewS
   ];
 
   const CREATOR_TABS = [
-    {id:"dashboard", label:"Dashboard"},
-    {id:"upload",    label:"✦ Upload work"},
-    {id:"series",    label:"My series"},
+    {id:"dashboard",   label:"Dashboard"},
+    {id:"illustrator", label:"✦ Illustrator"},
+    {id:"upload",      label:"✦ Upload work"},
+    {id:"series",      label:"My series"},
   ];
 
   return (
@@ -188,6 +190,16 @@ const CreatorDashboard = ({ auth, db, published, onShowAuth, onGoStudio, onViewS
           </button>
         ))}
       </div>
+
+      {creatorTab==="illustrator"&&(
+        <MangaIllustrator
+          auth={auth}
+          onSaveStory={onSaveStory}
+          onSaveBible={onSaveBible}
+          setToast={setToast}
+          onViewStory={onViewStory}
+        />
+      )}
 
       {creatorTab==="dashboard"&&(
         <div>
