@@ -127,9 +127,10 @@ export async function askClaude(prompt, onChunk, retries=2, action="misc") {
       const tokenLimit = 8000;
 
       // Always through our authenticated proxy — the browser never holds the Anthropic key.
-      // Abort a stalled request after 90s so a single hung call can't freeze the whole flow forever.
+      // Abort a stalled request so a single hung call can't freeze the whole flow forever. Matches the
+      // server's maxDuration (300s, vercel.json) — any shorter and we'd cut off calls the server can finish.
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 90000);
+      const timer = setTimeout(() => ctrl.abort(), 300000);
       let res;
       try {
         res = await fetchWithBackoff("/api/claude", {
@@ -145,6 +146,8 @@ export async function askClaude(prompt, onChunk, retries=2, action="misc") {
         // Auth/credit/limit failures won't recover on retry — surface once and stop (see _onBalance).
         if (res.status === 429) { try { _onBalance?.("demo_limit"); } catch {} return null; }
         if (res.status === 401 || res.status === 402) { try { _onBalance?.(res.status === 402 ? "out_of_credits" : "auth"); } catch {} return null; }
+        // Function timeout — a retry just runs into the same wall and doubles the wait. Fail fast.
+        if (res.status === 504) return null;
         if (attempt < retries-1) { await new Promise(r=>setTimeout(r,1000)); continue; }
         return null;
       }
@@ -280,7 +283,7 @@ export async function askClaudeVision(prompt, images = [], action = "misc") {
   const content = [{ type: "text", text: prompt }, ...blocks];
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 90000);
+    const timer = setTimeout(() => ctrl.abort(), 300000); // matches the server's maxDuration (see askClaude)
     let res;
     try {
       res = await fetchWithBackoff("/api/claude", {

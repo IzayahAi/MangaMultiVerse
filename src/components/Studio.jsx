@@ -203,6 +203,11 @@ const Studio = ({user, credits, onUseCredits, drafts, myStoryCount = 0, onSave, 
     const s4 = await askClaude(AGENT_STEP4(s1, s2||{}, s3||{}), ()=>{});
     if (s4) setStory(prev => ({...prev, ...s4}));
 
+    // Steps 2–4 are best-effort, but a gap (e.g. no story arc → no chapter-1 beats) weakens everything
+    // downstream — say so instead of carrying on silently.
+    const missed = [!s2 && "characters", !s3 && "world", !s4 && "story arc"].filter(Boolean);
+    if (missed.length) setToast({msg:`Couldn't generate the ${missed.join(", ")} — try again for a fuller story`,type:"err"});
+
     // Creator style carry-over: if this creator has published through the Illustrator before, their
     // learned art + lettering profile (cached as mv_style_<userId>) pre-seeds this new story so the
     // AI generates in their established style. Best-effort; absent for first-time / signed-out users.
