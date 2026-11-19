@@ -26,8 +26,8 @@ should self-clear on the next clean daily run; confirm it does) and a recurring 
 
 The 504 was the last thing in the way. Remaining: founder confirms the LinkedIn limited-beta share is still
 the plan → incognito pass (guest read → sign up → create → publish → ⚑ report → admin hide) → post. 44/50
-slots left. Founder-side housekeeping (not blocking): delete Supabase project
-`hhjyfwgujmiiariqtaix`.
+slots left. Founder-side housekeeping: all done (review_queue already applied, `vercel login` done, old
+Supabase project deleted — 2026-11-19).
 
 ## ✅ Deploy is live (resolved 2026-09-20, verified 2026-09-21)
 
@@ -58,7 +58,7 @@ and verified live this session. Only a couple of founder-side items remain:_
   "panel art has never reached the DB" blocker is closed. (Moved to decisions-log 2026-11-18.)
 - ✅ **Founder create-flow smoke test — re-run 2026-11-19 after the 504 fix (PR #5):** concept (4 steps) →
   8-panel chapter → DeepInfra panel art all 200 on prod. Publish skipped by choice (last verified 2026-10-09).
-- **Delete the old `hhjyfwgujmiiariqtaix` Supabase project** once nothing needs it (it's paused + stale).
+- ✅ ~~Delete the old `hhjyfwgujmiiariqtaix` Supabase project~~ — deleted by founder 2026-11-19 (host no longer resolves; nothing in code/env referenced it).
 - **Free-tier Supabase auto-pauses after ~7 days idle** — what just bit us. Steady public traffic prevents
   it; Supabase Pro ($25/mo) guarantees always-on if a quiet stretch is a risk.
 - **Daily generation cap (10/20/unlimited chapters)** — discussed, NOT built. It adds no cost (monthly

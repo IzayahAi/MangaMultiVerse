@@ -40,7 +40,7 @@ logs (25 sessions through 2026-09-28). Last updated 2026-11-19._
 - [ ] **Close the demo credit-balance gap.** On the demo a user can edit their own client-side balance.
       Not a key/security leak (the real app enforces server-side via `_guard.js` + `_pricing.js`) — a
       demo-only limitation worth knowing.
-- [ ] **Delete the old stale Supabase project** (`hhjyfwgujmiiariqtaix`) once nothing needs it.
+- [x] ~~**Delete the old stale Supabase project** (`hhjyfwgujmiiariqtaix`)~~ — deleted 2026-11-19.
 - [ ] **Make the repo private** — optional now that keys are rotated.
 
 ## 🟢 Ops / maintenance agents
