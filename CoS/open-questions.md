@@ -26,7 +26,7 @@ should self-clear on the next clean daily run; confirm it does) and a recurring 
 
 The 504 was the last thing in the way. Remaining: founder confirms the LinkedIn limited-beta share is still
 the plan → incognito pass (guest read → sign up → create → publish → ⚑ report → admin hide) → post. 44/50
-slots left. Founder-side housekeeping (not blocking): run `db/review_queue.sql`, delete Supabase project
+slots left. Founder-side housekeeping (not blocking): delete Supabase project
 `hhjyfwgujmiiariqtaix`, `vercel login` (CLI token expired — Claude can't read function logs).
 
 ## ✅ Deploy is live (resolved 2026-09-20, verified 2026-09-21)
@@ -129,7 +129,7 @@ _(nothing blocking as of 2026-11-19.)_ ~~Fund the providers~~ — retired: Anthr
 - **Post-launch agent roadmap — P3 wave BUILT 2026-09-22 ("build them all").** All four autonomous+approval
   agents shipped on the runner (Moderator + Approval Rail, Health Medic, Curator/Recommender, Translator
   Queue). Remaining to finish them:
-  - **Run `db/review_queue.sql`** in Supabase (Moderator's queue; best-effort until then).
+  - ✅ ~~Run `db/review_queue.sql`~~ — already applied (verified 2026-11-19: anon REST → 200 `[]`, not 404).
   - **Verify the two data-writers on a throwaway story** before cron-promoting: Health Medic's `medic_heal`
     (does the reader pick up panels written to `script.panel_images`?) and the Translator Queue (does a
     written translation render? confirm the `translations` table's columns/shape match).
