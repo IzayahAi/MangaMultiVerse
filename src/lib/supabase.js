@@ -429,10 +429,25 @@ export async function checkSignupSlots() {
   } catch { return 50; }
 }
 
+// sb.rpc throws the raw response body on failure, so a rejected signup used to show users raw JSON
+// like {"code":422,"error_code":"weak_password",...}. Map Supabase's auth error codes to plain English.
+function friendlyAuthError(raw) {
+  let j = {}; try { j = JSON.parse(raw); } catch { return raw || "Sign up failed — please try again"; }
+  const code = j.error_code || "";
+  if (code === "weak_password") return "Password must be at least 6 characters.";
+  if (code === "user_already_exists" || code === "email_exists") return "That email already has an account — use Sign in instead.";
+  if (code === "email_address_invalid" || code === "validation_failed") return "That email address doesn't look right — please check it.";
+  if (code === "over_email_send_rate_limit" || code === "over_request_rate_limit") return "Too many attempts — wait a minute and try again.";
+  if (/full|P0001/i.test(raw)) return raw; // AuthModal maps the 50-account cap to its own message
+  return j.msg || j.message || j.error_description || "Sign up failed — please try again";
+}
+
 export async function signUp(email, password, username) {
   username = (username || "").trim(); // no stray leading/trailing whitespace in the stored handle
   if (DEMO) return { user:{ id:`demo_${Date.now()}`, email, username }, token:"demo" };
-  const r = await sb.rpc("/auth/v1/signup", { email, password, data:{ username } });
+  let r;
+  try { r = await sb.rpc("/auth/v1/signup", { email, password, data:{ username } }); }
+  catch (e) { throw new Error(friendlyAuthError(e.message)); }
   // (never log the full auth response — it contains access/refresh tokens)
   if (r.error) throw new Error(r.error.message || r.error);
   if (r.msg) throw new Error(r.msg);
