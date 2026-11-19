@@ -27,7 +27,7 @@ should self-clear on the next clean daily run; confirm it does) and a recurring 
 The 504 was the last thing in the way. Remaining: founder confirms the LinkedIn limited-beta share is still
 the plan → incognito pass (guest read → sign up → create → publish → ⚑ report → admin hide) → post. 44/50
 slots left. Founder-side housekeeping (not blocking): delete Supabase project
-`hhjyfwgujmiiariqtaix`, `vercel login` (CLI token expired — Claude can't read function logs).
+`hhjyfwgujmiiariqtaix`.
 
 ## ✅ Deploy is live (resolved 2026-09-20, verified 2026-09-21)
 
