@@ -4,6 +4,14 @@ _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
 ## 2026-11-18
 
+- **`ANTHROPIC_API_KEY` blocker — RESOLVED same session.** Found the whole app's AI down in prod
+  (`/api/claude` → Anthropic `401 invalid x-api-key`; all four shared-key callers affected). Founder rotated
+  the key in place (edited the existing `ANTHROPIC_API_KEY` value in Vercel, not a new var) + redeployed.
+  Verified green: `/api/claude` → `400 "model: Field required"` (past auth, key accepted), `/api/synthesis`
+  → `200` with a real synthesis (cron live, key funded). Root cause was budget (account ran dry over the
+  ~5-week gap), so the open follow-up is a spend alert. First live synthesis also surfaced historical "204
+  for 30+ days" endpoint noise (expect self-clear) + a `vite@7.3.6` advisory to bump. — Mr. K
+
 - **`SUPABASE_ANON_KEY` corruption blocker — confirmed RESOLVED (was stale in the docs).** The Sep-23
   bullet-char corruption had already been fixed back then (commits `78b068f` + `dcfd930`); `open-questions.md`
   just never got updated, so it read as a live blocker for ~2 months. Re-verified three ways this session:

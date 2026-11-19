@@ -2,15 +2,25 @@
 
 _Mr. K keeps this current. Resolved questions move to `decisions-log.md`._
 
-## 🔴 BLOCKING (found 2026-11-18): `ANTHROPIC_API_KEY` invalid in Vercel Production
+## ✅ `ANTHROPIC_API_KEY` blocker — RESOLVED (found + fixed 2026-11-18)
 
-**The entire app's AI is down in production.** `POST /api/claude` returns `401 {"type":"authentication_error","message":"invalid x-api-key"}` — Anthropic's own error, passed straight through. All four Anthropic callers share the one `ANTHROPIC_API_KEY` env var, so this takes down **all** of them at once:
-- `api/claude.js` — core story / script / panel generation (the whole creation flow)
-- `api/translate.js` — reader-side translation
-- `api/maintenance.js` — daily health-medic cron
-- `api/synthesis.js` — weekly Mr. K synthesis (surfaced as `/api/synthesis` → `502 "synthesis model error 401"`)
+Found this session: the entire app's AI was down in production — `POST /api/claude` returned Anthropic's
+`401 invalid x-api-key`, taking out all four callers that share the one env var (`api/claude.js` core
+generation, `api/translate.js`, `api/maintenance.js` daily cron, `api/synthesis.js` weekly cron). Cause:
+the key expired / account ran dry during the ~5-week gap since the Oct 10 commit.
 
-**Fix (founder-side):** paste a fresh, **funded** Anthropic key into Vercel env (`ANTHROPIC_API_KEY`) → redeploy. The key is either expired or its account ran out of budget during the ~5-week gap (last commit was Oct 10). Pairs with the long-standing "confirm a funded Anthropic budget + spend alert" item below — this is that bill coming due. Verify after: `curl -s -X POST https://mangaverse-deploy.vercel.app/api/claude -H "Content-Type: application/json" -d '{"messages":[{"role":"user","content":"hi"}],"max_tokens":5}'` should stop returning the auth error.
+Fixed same session — founder rotated the key in place (edited the existing `ANTHROPIC_API_KEY` value in
+Vercel) + redeployed. Verified: `/api/claude` now returns `400 "model: Field required"` (past auth — key
+accepted) and `/api/synthesis` returns `200` with a real generated synthesis (cron live + key funded).
+(Moved to decisions-log 2026-11-18.)
+
+**Still worth doing:** confirm a spend alert on the Anthropic account so this doesn't recur silently (the
+root cause was budget, not the key itself — see the long-standing funding item below).
+
+**Surfaced by the first live synthesis run (2026-11-18), to triage:** it reported "all five API endpoints
+returning 204 for 30+ days" (almost certainly historical maintenance-cron noise from the idle/keyless gap —
+should self-clear on the next clean daily run; confirm it does) and a recurring `vite@7.3.6` advisory
+(real but low-urgency dep bump).
 
 ## ✅ Deploy is live (resolved 2026-09-20, verified 2026-09-21)
 
