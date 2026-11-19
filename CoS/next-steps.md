@@ -1,13 +1,14 @@
 # Next Steps — MangaMultiVerse
 
 _Mr. K's action backlog. Newest priorities at top. Rebuilt from the closed-session daily
-logs (25 sessions through 2026-09-28). Last updated 2026-10-09._
+logs (25 sessions through 2026-09-28). Last updated 2026-11-19._
 
 ---
 
 ## 🔴 Blockers to a real tester round (owner: founder)
 
-- [ ] **`spend_credits` RPC is still not live (verified HTTP 404 / PGRST202 today).** The function
+- [x] ~~**`spend_credits` RPC is still not live**~~ — stale: armed (see open-questions billing note).
+      _Original note:_ **`spend_credits` RPC was not live (HTTP 404 / PGRST202 on 2026-10-09).** The function
       exists but PostgREST hasn't cached it. One line in the Supabase SQL editor finishes it:
       `NOTIFY pgrst, 'reload schema';` (or toggle any API setting to force a reload). Until the probe
       returns 401/403 instead of 404, flipping `RELEASE_MODE` will 500 on every paid action. See `LAUNCH.md`.
@@ -33,7 +34,7 @@ logs (25 sessions through 2026-09-28). Last updated 2026-10-09._
 
 ## 🟡 Harden before PUBLIC (not required for a trusted tester round)
 
-- [ ] **Move the initial credit grant server-side.** Today it's a client insert (`supabase.js:330`), so a
+- [x] ~~**Move the initial credit grant server-side.**~~ — done (signup trigger grants server-side). Today it's a client insert (`supabase.js:330`), so a
       user could seed their own starting balance. Move it to a `handle_new_user` trigger. The atomic RPC
       stops over-spending, not a doctored initial grant.
 - [ ] **Close the demo credit-balance gap.** On the demo a user can edit their own client-side balance.
@@ -79,6 +80,10 @@ logs (25 sessions through 2026-09-28). Last updated 2026-10-09._
 
 ## ✅ Recently shipped (from the closed sessions)
 
+- **2026-11-19 — PR #5: AI Studio 504 fix + `/api/claude` model/token pin** (`50d4994`). `maxDuration` 300,
+  fail-fast on 504, empty-step toasts, Haiku-only allowlist + 8000 `max_tokens` cap, `Server-Timing` header.
+  Prod smoke test re-run green through panel art.
+- **2026-10-09 — PR #4: custom Illustrator story flow** (verified 2026-11-18: "Rooftop Duel" art persisted).
 - **2026-10-09 — Founder create-flow smoke test passed + publish-revert bug fixed.** Full create→publish
   path verified live in prod. Found and fixed a publish-reverts-to-draft race: a trailing draft auto-save
   clobbered the just-published status (stale-closure `editStatus` guard + a concurrent-await race). Fix

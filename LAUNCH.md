@@ -15,6 +15,10 @@ skipped and per-IP daily caps (`DEMO_LIMITS`) keep demo spend sane.
 
 ## Image providers — Together primary, DeepInfra fallback (Fal demoted 2026-09-22)
 
+> **⚠️ Superseded 2026-09-23:** DeepInfra FLUX-schnell is now **PRIMARY** and Together the fallback (see
+> `generatePanelImage` in `src/lib/claude.js`). Confirmed on prod 2026-11-19 (all panels served by
+> `/api/deepinfra`). The order below is historical.
+
 Orchestrated client-side in `src/lib/claude.js` (`generatePanelImage`). Each step falls through on failure:
 
 1. **Together** (`/api/image`) is PRIMARY: `Rundiffusion/Juggernaut-Lightning-Flux` (paid, ~$0.0017/MP —

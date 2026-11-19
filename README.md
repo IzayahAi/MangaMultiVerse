@@ -10,7 +10,7 @@ Give it a seed like *"A cultivator dies at the peak and regresses to his weakest
 
 - **Multi-step story agent** — a chained Claude pipeline builds the story in stages (title → characters → world → 3-act arc → per-chapter multi-panel script) rather than one giant prompt, so each stage stays coherent and editable.
 - **Resilient model-output parsing** — tolerant JSON extraction with recovery for partial or truncated responses, so a single malformed generation doesn't sink the run.
-- **AI art generation** — panel images via Fal.ai (FLUX) and Together AI, with automatic provider failover, exponential backoff, rate-limit handling, and request timeouts.
+- **AI art generation** — panel images via DeepInfra (FLUX-schnell, primary) and Together AI (fallback), with automatic provider failover, exponential backoff, rate-limit handling, and request timeouts.
 - **Character consistency** — appearance and scene-matching logic carried across panels so a character looks like themselves from panel to panel.
 - **Per-character voice** — ElevenLabs text-to-speech, casting a fitting voice to each character from their profile for spoken playback.
 - **Audience-aware storytelling** — demographic controls (Shōnen / Seinen / etc.) and style-aware panel dimensions across manga, manhwa, manhua, and Western-comic formats.
@@ -25,7 +25,7 @@ Give it a seed like *"A cultivator dies at the peak and regresses to his weakest
 | Frontend | React 18, Vite |
 | Backend | Supabase (Postgres, JWT auth, row-level security) |
 | AI — text | Claude API (multi-step generation pipeline) |
-| AI — images | Fal.ai (FLUX), Together AI — with failover |
+| AI — images | DeepInfra (FLUX-schnell) primary, Together AI fallback (Fal optional) |
 | AI — voice | ElevenLabs TTS |
 | Serverless | Vercel edge/serverless functions (`/api`) that proxy provider calls server-side |
 | Deploy | Vercel |

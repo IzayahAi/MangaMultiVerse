@@ -22,6 +22,13 @@ returning 204 for 30+ days" (almost certainly historical maintenance-cron noise 
 should self-clear on the next clean daily run; confirm it does) and a recurring `vite@7.3.6` advisory
 (real but low-urgency dep bump).
 
+## Next milestone — "first 50 creators" beta (2026-11-19)
+
+The 504 was the last thing in the way. Remaining: founder confirms the LinkedIn limited-beta share is still
+the plan → incognito pass (guest read → sign up → create → publish → ⚑ report → admin hide) → post. 44/50
+slots left. Founder-side housekeeping (not blocking): run `db/review_queue.sql`, delete Supabase project
+`hhjyfwgujmiiariqtaix`, `vercel login` (CLI token expired — Claude can't read function logs).
+
 ## ✅ Deploy is live (resolved 2026-09-20, verified 2026-09-21)
 
 The 09-18 "deploy unfinished" blocker is closed. The merge + push landed (`2159adc`), local `main` ==
@@ -49,8 +56,8 @@ and verified live this session. Only a couple of founder-side items remain:_
   → upload HTTP 200, public fetch HTTP 200; and art is in the DB for both story types — AI ("Blood
   Remembers", 78 images) and the new custom illustrator story ("Rooftop Duel", Oct 9, 1 image). The
   "panel art has never reached the DB" blocker is closed. (Moved to decisions-log 2026-11-18.)
-- **Founder create-flow smoke test:** signup → create a story → generate a chapter (confirm Juggernaut-ish
-  art) → publish. Reader path is verified; create needs a real login.
+- ✅ **Founder create-flow smoke test — re-run 2026-11-19 after the 504 fix (PR #5):** concept (4 steps) →
+  8-panel chapter → DeepInfra panel art all 200 on prod. Publish skipped by choice (last verified 2026-10-09).
 - **Delete the old `hhjyfwgujmiiariqtaix` Supabase project** once nothing needs it (it's paused + stale).
 - **Free-tier Supabase auto-pauses after ~7 days idle** — what just bit us. Steady public traffic prevents
   it; Supabase Pro ($25/mo) guarantees always-on if a quiet stretch is a risk.
@@ -64,7 +71,7 @@ and verified live this session. Only a couple of founder-side items remain:_
   it 402s and falls to free FLUX ($0, still works); (b) add `DEEPINFRA_API_KEY` in Vercel (+ `.env.local`).
   Also: the local `.env.local` `TOGETHER_API_KEY` is stale (401) — prod's is valid; refresh the local one
   to test locally. Live end-to-end verification of Juggernaut + DeepInfra is pending this setup.
-- **Confirm a funded Anthropic budget + a spend alert** (Anthropic text is the other real burn).
+- ✅ ~~Confirm a funded Anthropic budget~~ — founder confirmed 2026-11-18 ("budget is fine").
 - **Run the incognito smoke test**, then announce: guest read → sign up → create → Together render →
   publish → ⚑ report → admin hide.
 - ✅ **Account-count ceiling — RESOLVED 2026-09-27: hard-capped at 50.** Before sharing the demo link
@@ -86,9 +93,8 @@ and verified live this session. Only a couple of founder-side items remain:_
 
 ## Blocking
 
-- **Fund the providers before a tester round?** Fal (~$30–50) + Anthropic (~$15–25). For the public demo
-  images fall back to Together (free, lower-fidelity) — funding Fal is optional, not a launch blocker.
-  Decision owner: founder. Status: parked ("all we need is money").
+_(nothing blocking as of 2026-11-19.)_ ~~Fund the providers~~ — retired: Anthropic key rotated + funded
+(founder: "budget is fine"), DeepInfra is funded and serving as primary art provider, Fal is demoted.
 
 ## Waiting / to decide
 

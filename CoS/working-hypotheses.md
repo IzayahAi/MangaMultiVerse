@@ -1,6 +1,6 @@
 # Working Hypotheses — Mr. K's read on the founder's priorities
 
-_Last updated: 2026-09-21. Mr. K revises this when new evidence shifts the read._
+_Last updated: 2026-11-19. Mr. K revises this when new evidence shifts the read._
 
 ## Current read
 
@@ -12,9 +12,13 @@ _Last updated: 2026-09-21. Mr. K revises this when new evidence shifts the read.
   translation in demo, voice off, per-IP caps, and — this session — killing all unprompted AI generation.
   The founder notices spend and reacts to it. Assume any "it's generating on its own" report is a priority.
 
-- **The one blocker is money, not code.** The platform is feature-complete for a demo. Fal (empty/low-tier)
-  is rate-limiting; funding it (~$30–50) + Anthropic (~$15–25) is what unblocks a real tester round. The
-  founder has said plainly: "all we need is money."
+- **The blocker is now readiness, not money (2026-11-19).** Providers are funded and the founder says
+  "budget is fine." What actually stalls launch is reliability drift during gaps — after ~5 weeks away the
+  Anthropic key had lapsed and a latent 60s timeout surfaced. Expect each return-from-break session to
+  start with a health sweep before new work.
+
+- **Cautious about going public.** Skipped publishing even a throwaway smoke-test story (2026-11-19).
+  Public-facing steps get an explicit yes from him; don't publish on his behalf.
 
 - **Founder is the orchestrator; Claude executes.** He runs secrets himself (never hands over keys), runs
   the Supabase SQL himself, and wants Claude to build + verify. He corrects course quickly when Claude jumps
@@ -36,4 +40,5 @@ _Last updated: 2026-09-21. Mr. K revises this when new evidence shifts the read.
 
 ## Retired / superseded
 
-_(none yet)_
+- ~~**The one blocker is money, not code**~~ (2026-09-21 read) — retired 2026-11-19: providers funded,
+  founder confirmed budget is fine; superseded by "readiness, not money" above.

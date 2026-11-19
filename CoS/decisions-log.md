@@ -2,6 +2,29 @@
 
 _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
+## 2026-11-19
+
+- **AI Studio 504 fixed (PR #5, squash `50d4994`).** Story-concept step 4 ("Mapping the story arc") hit the
+  60s Vercel `maxDuration`. Raised `api/claude.js` to 300s (Hobby + Fluid Compute cap) and the client abort to
+  match; 504s now fail fast instead of retrying into the same wall; `genStory` toasts when characters/world/arc
+  come back empty instead of saving a hollow story. Root cause per the new `Server-Timing` header: it's
+  Anthropic generation time, not us — guard() is 0.2–1.2s, Haiku is 22–50s per step (arc = 50s). Faster
+  later = shorter prompts or streaming, not DB tuning. — Mr. K
+
+- **`/api/claude` open-proxy cost gap closed (same PR).** The proxy forwarded any client-chosen model +
+  `max_tokens`, and demo mode admits signed-out callers — anyone could spend our key on a pricier model.
+  Now server-side allowlist (`claude-haiku-4-5-20251001` only) + `max_tokens` cap 8000, both checked
+  before guard() so rejects never charge credits or demo slots. Verified on prod: Opus → 400, Haiku → 200. — Mr. K
+
+- **Prod create-flow smoke test re-run — PASSED through panel art; publish skipped by founder.** As
+  hypheezay: 4 concept steps 200 (29/23/25/52s), 8-panel ch.1 script 200 (3 calls), panel art 200 via
+  DeepInfra (12 images, ~1s each). No error toast. Founder chose not to publish the throwaway story; the
+  publish path was last verified 2026-10-09 (`a156d09`). — Mr. K
+
+- **Ops `cos_*` / `error_log` / `health_events` tables are admin-read-only for anon** (RLS). Anon reads
+  return `[]` even when rows exist — not an empty table. Inserts to `cos_daily_logs` still work (201).
+  Don't read an empty anon response as "no data". — Mr. K
+
 ## 2026-11-18
 
 - **`ANTHROPIC_API_KEY` blocker — RESOLVED same session.** Found the whole app's AI down in prod
