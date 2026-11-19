@@ -2,6 +2,30 @@
 
 _Newest first. Mr. K appends decisions at session end, signed `— Mr. K`._
 
+## 2026-11-18
+
+- **`SUPABASE_ANON_KEY` corruption blocker — confirmed RESOLVED (was stale in the docs).** The Sep-23
+  bullet-char corruption had already been fixed back then (commits `78b068f` + `dcfd930`); `open-questions.md`
+  just never got updated, so it read as a live blocker for ~2 months. Re-verified three ways this session:
+  local `.env.local` key is byte-identical to the clean client-hardcoded key in `src/lib/supabase.js`
+  (208 chars, pure ASCII, no bullet); it works live (Supabase REST 200, auth 200); and production proves it —
+  a server-uploaded AI story carries 78 panel images as real public Storage URLs, impossible without a
+  working prod anon key. No paste needed. — Mr. K
+
+- **Panel-art-to-DB pipeline — verified working end-to-end.** Ran the exact `api/_storage.js` `uploadPanelArt`
+  path with the anon key: upload HTTP 200, public fetch HTTP 200. Confirmed art is in the DB for both story
+  types — AI-generated ("Blood Remembers", 78 images) and the new custom illustrator story from PR #4
+  ("Rooftop Duel", Oct 9, 1 image). The long-standing "panel art has never reached the database" blocker is
+  closed. (Left one 1×1px test PNG in the `panel-art` bucket — anon can't delete it, harmless.) — Mr. K
+
+- **Discovered: `ANTHROPIC_API_KEY` is invalid in Vercel Production — the whole app's AI is down.**
+  `POST /api/claude` returns Anthropic's `401 invalid x-api-key` passed straight through. All four Anthropic
+  callers (`api/claude.js`, `api/translate.js`, `api/maintenance.js`, `api/synthesis.js`) share the one env
+  var, so core generation, translation, the daily maintenance cron, and the weekly synthesis cron are all
+  down together. Almost certainly the key expired or the account ran dry during the ~5-week gap since the
+  Oct 10 commit. Fix is founder-side: paste a fresh funded key into Vercel → redeploy. This is the "confirm
+  a funded Anthropic budget" item finally coming due. Now the top live blocker (see open-questions.md). — Mr. K
+
 ## 2026-09-27
 
 - **Public demo hard-capped at 50 accounts** — before sharing the link publicly on LinkedIn. Enforced at

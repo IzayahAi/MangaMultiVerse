@@ -2,11 +2,23 @@
 
 _Mr. K keeps this current. Resolved questions move to `decisions-log.md`._
 
+## 🔴 BLOCKING (found 2026-11-18): `ANTHROPIC_API_KEY` invalid in Vercel Production
+
+**The entire app's AI is down in production.** `POST /api/claude` returns `401 {"type":"authentication_error","message":"invalid x-api-key"}` — Anthropic's own error, passed straight through. All four Anthropic callers share the one `ANTHROPIC_API_KEY` env var, so this takes down **all** of them at once:
+- `api/claude.js` — core story / script / panel generation (the whole creation flow)
+- `api/translate.js` — reader-side translation
+- `api/maintenance.js` — daily health-medic cron
+- `api/synthesis.js` — weekly Mr. K synthesis (surfaced as `/api/synthesis` → `502 "synthesis model error 401"`)
+
+**Fix (founder-side):** paste a fresh, **funded** Anthropic key into Vercel env (`ANTHROPIC_API_KEY`) → redeploy. The key is either expired or its account ran out of budget during the ~5-week gap (last commit was Oct 10). Pairs with the long-standing "confirm a funded Anthropic budget + spend alert" item below — this is that bill coming due. Verify after: `curl -s -X POST https://mangaverse-deploy.vercel.app/api/claude -H "Content-Type: application/json" -d '{"messages":[{"role":"user","content":"hi"}],"max_tokens":5}'` should stop returning the auth error.
+
 ## ✅ Deploy is live (resolved 2026-09-20, verified 2026-09-21)
 
 The 09-18 "deploy unfinished" blocker is closed. The merge + push landed (`2159adc`), local `main` ==
-`origin/main` with nothing unpushed, and prod `https://mangaverse-deploy.vercel.app/api/synthesis` returns
-JSON — Mr. K is live in production and the weekly cron is active. Nothing to resume here.
+`origin/main` with nothing unpushed — Mr. K is deployed in production. ⚠️ **Update 2026-11-18:** the weekly
+synthesis cron is currently DOWN — `/api/synthesis` now returns `502 "synthesis model error 401"` because
+the shared `ANTHROPIC_API_KEY` is invalid in Vercel (see the 🔴 BLOCKING section at the top). The deploy
+itself is fine; it's the expired model key. Cron resumes automatically once the key is refreshed.
 
 ## Public-demo launch (no billing) — founder-side to go live
 
@@ -14,25 +26,19 @@ _Decided 2026-09-22: free public demo, gate stays OFF, Together fallback, no Str
 and verified live this session. Only a couple of founder-side items remain:_
 
 **Demo is LIVE (2026-09-22) — remaining cleanup after the two-project fix:**
-- **BLOCKING (found 2026-09-23): `SUPABASE_ANON_KEY` in Vercel Production is corrupted** — a bullet
-  character ("•") sits at index 8 of the 208-char key (same length as the real key, so one char got
-  swapped — a masked-field copy-paste artifact). This silently breaks every server-side call that uses it
-  as a header value; many failures get swallowed by existing "never break the demo" fallback logic, so
-  it's been failing invisibly, not loudly. Confirmed the client-side hardcoded key in
-  `src/lib/supabase.js` is clean/correct — same value, byte-verified. Gave Michele that exact value to
-  re-paste. First re-add attempt saved as EMPTY (confirmed via live `vercel env pull`) — needs a retry +
-  confirm it actually saved, then redeploy. `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` still worth a
-  once-over while in there (service role was confirmed empty earlier this week — separate item, see below).
-- **Panel art has NEVER reached the database, for any story (found + partially fixed 2026-09-23).** Both
-  image providers return raw base64; the client wraps it as a `data:` URI; `publicPanelImages()` (the
-  function deciding what's safe to push to the cloud) only keeps values starting with `http`, so a
-  `data:` URI never qualified — generated art only ever lived in the creator's own browser localStorage.
-  Confirmed directly: a story published same-day has zero entries in `script.panel_images`. Fixed:
-  `db/panel_art_storage.sql` (public `panel-art` Storage bucket, Michele ran it) + `api/_storage.js`
-  (uploadPanelArt) wired into both `api/image.js` and `api/deepinfra.js` — uploads now happen and return a
-  real https URL. **Can't verify end-to-end until the SUPABASE_ANON_KEY item above is actually fixed**,
-  since the same corrupted key is what the upload call uses. Once confirmed: consider regenerating art for
-  already-published stories (their `script.panel_images` is currently empty).
+- ✅ **`SUPABASE_ANON_KEY` corruption — RESOLVED (confirmed 2026-11-18).** The Sep-23 bullet-char
+  corruption was fixed back then (commits `78b068f` redeploy + `dcfd930`); the doc just never got updated.
+  Re-verified 2026-11-18: local `.env.local` key is byte-identical to the clean client-hardcoded key in
+  `src/lib/supabase.js` (208 chars, pure ASCII, no bullet); it works live (REST 200, auth 200); and
+  production proves it — a server-uploaded AI story ("Blood Remembers", Sep 29) holds 78 panel images as
+  real `https://…/storage/v1/object/public/panel-art/…` URLs, which only land via a working prod anon key.
+  Nothing to paste. (Moved to decisions-log 2026-11-18.)
+- ✅ **Panel art reaching the DB — RESOLVED / verified end-to-end (2026-11-18).** The `data:`-URI →
+  Storage-bucket fix (`db/panel_art_storage.sql` + `api/_storage.js` wired into `api/image.js` /
+  `api/deepinfra.js`) works in production. Verified: ran the exact `uploadPanelArt` path with the anon key
+  → upload HTTP 200, public fetch HTTP 200; and art is in the DB for both story types — AI ("Blood
+  Remembers", 78 images) and the new custom illustrator story ("Rooftop Duel", Oct 9, 1 image). The
+  "panel art has never reached the DB" blocker is closed. (Moved to decisions-log 2026-11-18.)
 - **Founder create-flow smoke test:** signup → create a story → generate a chapter (confirm Juggernaut-ish
   art) → publish. Reader path is verified; create needs a real login.
 - **Delete the old `hhjyfwgujmiiariqtaix` Supabase project** once nothing needs it (it's paused + stale).
